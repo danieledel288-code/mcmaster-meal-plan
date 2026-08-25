@@ -302,6 +302,11 @@ const BUILDINGS = {
   hedden:   { name: 'Hedden Hall', short: 'Hedden', lat: 43.2664345, lon: -79.9183565 },
 };
 const RESIDENCE_IDS = ['pgcll','keyes','bates','matthews','whidden','edwards','wallingford','moulton','woodstock','brandon','hedden'];
+const CAMPUS_BOUNDS = (() => {
+  const lats = Object.values(BUILDINGS).map(b => b.lat), lons = Object.values(BUILDINGS).map(b => b.lon);
+  const padLat = 0.0012, padLon = 0.0015;
+  return [[Math.min(...lats) - padLat, Math.min(...lons) - padLon], [Math.max(...lats) + padLat, Math.max(...lons) + padLon]];
+})();
 const WALK_M_PER_MIN = 75;
 function haversine(a, b) {
   const R = 6371000, toRad = d => d * Math.PI / 180;
@@ -496,14 +501,14 @@ const BUILDING_POLYGONS = {"bates":[[43.2635,-79.92257],[43.263515,-79.923002],[
 
 let leafletMapInstance = null;
 
-function renderMap(containerId, anchorBuilding, venueBuilding, relevantIds) {
+function renderMap(containerId, anchorBuilding, venueBuilding, relevantIds, returnBuilding) {
   const el = document.getElementById(containerId);
   if (!el) return;
   if (leafletMapInstance) { leafletMapInstance.remove(); leafletMapInstance = null; }
   const ids = [...new Set(relevantIds)].filter(id => BUILDINGS[id]);
   if (!ids.length) return;
 
-  const map = L.map(containerId, { scrollWheelZoom: true, attributionControl: true, zoomControl: true, minZoom: 15 });
+  const map = L.map(containerId, { scrollWheelZoom: true, attributionControl: true, zoomControl: true, minZoom: 16, maxBounds: CAMPUS_BOUNDS, maxBoundsViscosity: 1.0 });
   leafletMapInstance = map;
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
@@ -529,13 +534,16 @@ function renderMap(containerId, anchorBuilding, venueBuilding, relevantIds) {
     layer.bindTooltip(`${BUILDINGS[id].short}${BUILDINGS[id].approx ? ' (approx.)' : ''}`, { permanent: true, direction: 'center', className: 'bldg-tag', opacity: 1 });
   });
 
-  if (anchorBuilding && venueBuilding && anchorBuilding !== venueBuilding && BUILDINGS[anchorBuilding] && BUILDINGS[venueBuilding]) {
-    const a = [BUILDINGS[anchorBuilding].lat, BUILDINGS[anchorBuilding].lon];
-    const v = [BUILDINGS[venueBuilding].lat, BUILDINGS[venueBuilding].lon];
+  const drawLeg = (fromId, toId) => {
+    if (!fromId || !toId || fromId === toId || !BUILDINGS[fromId] || !BUILDINGS[toId]) return;
+    const a = [BUILDINGS[fromId].lat, BUILDINGS[fromId].lon];
+    const v = [BUILDINGS[toId].lat, BUILDINGS[toId].lon];
     L.polyline([a, v], { color: '#E8B355', weight: 2, dashArray: '4 5' }).addTo(map);
     const mid = [(a[0] + v[0]) / 2, (a[1] + v[1]) / 2];
-    L.marker(mid, { icon: L.divIcon({ className: '', html: `<span class="path-dist-label">${walkMinutes(anchorBuilding, venueBuilding)} min</span>`, iconSize: null }), interactive: false }).addTo(map);
-  }
+    L.marker(mid, { icon: L.divIcon({ className: '', html: `<span class="path-dist-label">${walkMinutes(fromId, toId)} min</span>`, iconSize: null }), interactive: false }).addTo(map);
+  };
+  drawLeg(anchorBuilding, venueBuilding);
+  drawLeg(venueBuilding, returnBuilding);
 
   ids.forEach(id => {
     const venuesHere = Object.entries(VENUES).filter(([vid, v]) => v.building === id);
@@ -644,7 +652,7 @@ function renderStats() {
 
 function anchorForMeal(meta, mealKey) {
   if (mealKey === 'lunch' && meta.lunch) return { building: meta.lunch.from, label: `${fmtTime(meta.lunch.start)}–${fmtTime(meta.lunch.end)}`, window: `${meta.lunch.gapMinutes} min window`, to: meta.lunch.to };
-  if (mealKey === 'breakfast') return { building: state.residence, label: meta.classes.length ? `Before ${fmtTime(meta.classes[0].start)}` : 'Flexible' };
+  if (mealKey === 'breakfast') return { building: state.residence, label: meta.classes.length ? `Before ${fmtTime(meta.classes[0].start)}` : 'Flexible', to: meta.classes.length ? meta.classes[0].building : null };
   return { building: meta.classes.length ? meta.classes[meta.classes.length - 1].building : state.residence, label: meta.classes.length ? `After ${fmtTime(meta.classes[meta.classes.length - 1].end)}` : 'Flexible' };
 }
 
@@ -787,8 +795,8 @@ function renderConsole() {
     const opts2 = candidateOptions(anchor2.building, state.dietary, state.favoriteVenues, state.hiddenVenues);
     const choiceKey2 = `${wk}_${activeMealKey}`;
     const chosen2 = opts2.find(o => o.venue === state.venueChoices[choiceKey2]) || opts2[0];
-    const relevantIds2 = [state.residence, anchor2.building, ...opts2.map(o => VENUES[o.venue].building)];
-    renderMap('campusMapEl', anchor2.building, chosen2 ? VENUES[chosen2.venue].building : null, relevantIds2);
+    const relevantIds2 = [state.residence, anchor2.building, anchor2.to, ...opts2.map(o => VENUES[o.venue].building)].filter(Boolean);
+    renderMap('campusMapEl', anchor2.building, chosen2 ? VENUES[chosen2.venue].building : null, relevantIds2, anchor2.to);
   }
 }
 function mealRow(key, label, windowText) {
