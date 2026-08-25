@@ -320,7 +320,7 @@ const VENUES = {
   secondcup:  { name: 'Second Cup', building: 'pgcll', icon: 'coffee', tier: 1,
     items: [{ item: 'Coffee + pastry', price: 6.75, est: true }] },
   choppedleaf:{ name: 'Chopped Leaf', building: 'pgcll', icon: 'leaf', tier: 2,
-    items: [{ item: 'Half salad or wrap', price: 10.99, est: true }] },
+    items: [{ item: 'Half salad or wrap', price: 10.99, est: true, dietary: ['vegetarian'] }] },
   centro:     { name: 'Centro@Commons', building: 'commons', icon: 'forkKnife', tier: 2,
     items: [
       { item: 'Butter Chicken (Taste of Home)', price: 8.99 },
@@ -403,6 +403,10 @@ function dayMeta(schedule, dow) {
   if (lunch) mealSlots.push('lunch');
   mealSlots.push('dinner');
   return { classes, mealSlots, lunch };
+}
+function dayMetaForDate(schedule, d, termStart, termEnd) {
+  const isSpecial = !!specialFor(d, termStart, termEnd);
+  return dayMeta(isSpecial ? [] : schedule, d.getDay());
 }
 
 /* ---------- Candidate venue engine ---------- */
@@ -620,7 +624,7 @@ function renderStats() {
   let plannedTotal = 0;
   dates.forEach(d => {
     if (state.homeDays.includes(isoDate(d))) return;
-    const meta = dayMeta(state.schedule, d.getDay());
+    const meta = dayMetaForDate(state.schedule, d, state.termStart, state.termEnd);
     meta.mealSlots.forEach(mk => {
       const anchor = anchorForMeal(meta, mk);
       const opts = candidateOptions(anchor.building, state.dietary, state.favoriteVenues, state.hiddenVenues);
@@ -649,9 +653,9 @@ function renderConsole() {
   const d = selectedDate;
   const key = isoDate(d);
   const wk = d.getDay();
-  const meta = dayMeta(state.schedule, wk);
-  const isHome = state.homeDays.includes(key);
   const special = specialFor(d, state.termStart, state.termEnd);
+  const meta = dayMetaForDate(state.schedule, d, state.termStart, state.termEnd);
+  const isHome = state.homeDays.includes(key);
   const dateLabel = d.toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' });
   const el = document.getElementById('console');
   if (!meta.mealSlots.includes(activeMealKey)) activeMealKey = meta.mealSlots[0];
@@ -676,7 +680,7 @@ function renderConsole() {
   const dnr = anchorForMeal(meta, 'dinner');
   scheduleHtml += mealRow('dinner', dnr.label, dnr.window);
   scheduleHtml += `</div>`;
-  if (!meta.classes.length) scheduleHtml = `<div class="banner">${svgIcon('house')} No classes today — meals below are flexible.</div>` + scheduleHtml;
+  if (!meta.classes.length && !special) scheduleHtml = `<div class="banner">${svgIcon('house')} No classes today — meals below are flexible.</div>` + scheduleHtml;
   if (special) scheduleHtml += `<div class="banner">${svgIcon('mapPin')} ${special.note}</div>`;
 
   let bodyHtml;
@@ -778,7 +782,7 @@ function renderConsole() {
     state.venueChoices[`${wk}_${activeMealKey}`] = vid; persist();
   };
   if (!isHome) {
-    const meta2 = dayMeta(state.schedule, wk);
+    const meta2 = meta;
     const anchor2 = anchorForMeal(meta2, activeMealKey);
     const opts2 = candidateOptions(anchor2.building, state.dietary, state.favoriteVenues, state.hiddenVenues);
     const choiceKey2 = `${wk}_${activeMealKey}`;
