@@ -1,0 +1,7 @@
+name = "mcmaster-meal-plan"
+pages_build_output_dir = "."
+compatibility_date = "2026-08-01"
+
+[[kv_namespaces]]
+binding = "MEAL_PLAN_KV"
+id = "e841bc06bfa64f84a56d9184d4ae80f4"
