@@ -1137,8 +1137,9 @@ function renderSettings(forced) {
         return;
       }
       state.schedule = found;
-      note.textContent = `Found ${found.length} class block${found.length === 1 ? '' : 's'} — check every row below, McMaster's PDF layout is irregular and this is a best-effort read.`;
+      const msg = `Found ${found.length} class block${found.length === 1 ? '' : 's'} — check every row below, McMaster's PDF layout is irregular and this is a best-effort read.`;
       renderSettings(forced);
+      document.getElementById('parseNote').textContent = msg;
     } catch (err) {
       note.textContent = 'Could not read that PDF — your existing schedule below is untouched. Try the paste-text option above instead, or add classes manually.';
     }
@@ -1153,8 +1154,9 @@ function renderSettings(forced) {
       return;
     }
     state.schedule = found;
-    note.textContent = `Found ${found.length} class block${found.length === 1 ? '' : 's'} from pasted text — check every row below before saving.`;
+    const msg = `Found ${found.length} class block${found.length === 1 ? '' : 's'} from pasted text — check every row below before saving.`;
     renderSettings(forced);
+    document.getElementById('parseNote').textContent = msg;
   });
   document.getElementById('saveSettingsBtn').addEventListener('click', () => {
     state.residence = document.getElementById('residenceSelect').value;
@@ -1176,7 +1178,7 @@ const DAY_ABBR = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const DAY_NAMES_RE = /(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)/i;
 const TIME_RANGE_RE = /(\d{1,2}:\d{2}\s*[AP]M)\s*(?:[-–]|to)\s*(\d{1,2}:\d{2}\s*[AP]M)/i;
 const DAYTIME_LINE_RE = /((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:\s*,\s*(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun))*)\s*:\s*(\d{1,2}:\d{2}\s*[AP]M)\s*to\s*(\d{1,2}:\d{2}\s*[AP]M)/i;
-const COURSE_RE = /^[A-Z]{2,6}\s?\d[\w]{1,4}/;
+const COURSE_RE = /^[A-Z]{2,10}\s?\d[\w]{1,4}/;
 const SECTION_RE = /\b(LEC|LAB|TUT)\s*[A-Z]?\d+/i;
 const BUILDING_CODE_MAP = {
   PGCLL: 'pgcll', MKR: 'keyes', ETB: 'engtech', JHE: 'hodgins', ABB: 'bourns',
@@ -1214,6 +1216,17 @@ function matchBuilding(text) {
   }
   return best;
 }
+function groupIntoLines(items) {
+  const sorted = [...items].sort((a, b) => a.y - b.y || a.x - b.x);
+  const lineGroups = [];
+  let curLine = [], lastY = null;
+  sorted.forEach(it => {
+    if (lastY !== null && Math.abs(it.y - lastY) > 4) { lineGroups.push(curLine); curLine = []; }
+    curLine.push(it); lastY = it.y;
+  });
+  if (curLine.length) lineGroups.push(curLine);
+  return lineGroups.map(g => ({ text: g.map(it => it.str).join(' ').trim(), x: g[0].x, y: g[0].y }));
+}
 async function pdfLines(file) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -1222,17 +1235,9 @@ async function pdfLines(file) {
     const page = await pdf.getPage(p);
     const content = await page.getTextContent();
     const viewport = page.getViewport({ scale: 1 });
-    const items = content.items.map(it => ({ str: it.str, x: it.transform[4], y: viewport.height - it.transform[5] }))
+    const items = content.items.map(it => ({ str: it.str, x: it.transform[4], y: viewport.height - it.transform[5], w: it.width || 0 }))
       .filter(it => it.str.trim());
-    items.sort((a, b) => a.y - b.y || a.x - b.x);
-    const lineGroups = [];
-    let curLine = [], lastY = null;
-    items.forEach(it => {
-      if (lastY !== null && Math.abs(it.y - lastY) > 4) { lineGroups.push(curLine); curLine = []; }
-      curLine.push(it); lastY = it.y;
-    });
-    if (curLine.length) lineGroups.push(curLine);
-    pages.push(lineGroups.map(g => ({ text: g.map(it => it.str).join(' ').trim(), x: g[0].x, y: g[0].y })));
+    pages.push({ lines: groupIntoLines(items), items });
   }
   return pages;
 }
@@ -1251,7 +1256,8 @@ function courseCodeIn(text) {
 }
 function parseDetailFormat(pages) {
   const found = [];
-  pages.forEach(lines => {
+  pages.forEach(page => {
+    const lines = page.lines;
     let i = 0;
     while (i < lines.length) {
       const text = lines[i].text;
@@ -1307,39 +1313,68 @@ function parseDetailFormat(pages) {
   return found;
 }
 
-/* Strategy B: a pure weekly-grid render with no explicit "Day : Time" text — bucket
-   items by which day-column they fall under (real x-position), matching what's actually
-   a simple column layout, then look for a time range within each column's clustered lines. */
+/* Strategy B: a pure weekly-grid render with no explicit "Day : Time" text (e.g. McMaster's
+   "My Weekly Schedule" print view). Every day's column sits in the same y-band per row, so
+   grouping into lines by y alone (as Strategy A's format needs) merges 5+ different days'
+   course blocks into one unreadable line. Fix: bucket the RAW items by day-column (real
+   x-position) FIRST, using the header row's x-positions as column boundaries, THEN group
+   each column's own items into lines — column-first, not line-first. */
 function parseGridFormat(pages) {
   const found = [];
-  pages.forEach(lines => {
-    const dayHeaders = lines.filter(l => DAY_NAMES_RE.test(l.text) && l.y < 200);
+  pages.forEach(page => {
+    const items = page.items;
+    const dayHeaders = items.filter(it => DAY_NAMES_RE.test(it.str) && it.y < 200);
     if (dayHeaders.length < 2) return;
-    const dayCols = dayHeaders.map(l => ({
-      day: DAY_ABBR.findIndex(a => l.text.toLowerCase().includes({ sun: 'sunday', mon: 'monday', tue: 'tuesday', wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday' }[a])),
-      x: l.x,
+    const dayCols = dayHeaders.map(it => ({
+      day: DAY_ABBR.findIndex(a => it.str.toLowerCase().includes({ sun: 'sunday', mon: 'monday', tue: 'tuesday', wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday' }[a])),
+      x: it.x,
     })).sort((a, b) => a.x - b.x);
-    const bounds = [-Infinity, ...dayCols.slice(1).map((c, i) => (c.x + dayCols[i].x) / 2), Infinity];
+    const gap0 = dayCols.length > 1 ? dayCols[1].x - dayCols[0].x : 40;
+    const bounds = [dayCols[0].x - gap0 / 2, ...dayCols.slice(1).map((c, i) => (c.x + dayCols[i].x) / 2), Infinity];
     const colFor = x => { for (let i = 0; i < dayCols.length; i++) if (x >= bounds[i] && x < bounds[i + 1]) return dayCols[i].day; return dayCols[dayCols.length - 1].day; };
-    const headerY = Math.min(...dayHeaders.map(l => l.y));
-    const body = lines.filter(l => l.y > headerY + 15);
+    const headerY = Math.min(...dayHeaders.map(it => it.y));
+    // Left of the first day column is the "Time" axis (8:00AM, 9:00AM, ...) - not day-column
+    // content, and its labels sit at the same y as real cells so they'd otherwise get glued
+    // onto whichever day happens to be leftmost.
+    const body = items.filter(it => it.y > headerY + 15 && it.x >= bounds[0]);
     const byCol = {};
-    body.forEach(l => { const c = colFor(l.x); (byCol[c] = byCol[c] || []).push(l); });
-    Object.entries(byCol).forEach(([dayStr, colLines]) => {
+    body.forEach(it => { const c = colFor(it.x); (byCol[c] = byCol[c] || []).push(it); });
+    Object.entries(byCol).forEach(([dayStr, colItems]) => {
       const day = parseInt(dayStr, 10);
+      const rawLines = groupIntoLines(colItems);
+      // A long subject name ("ENGINEER", "PHYSICS") can wrap onto its own line, separate from
+      // the "1P13A - C02" code line that follows - rejoin any bare all-caps word with the next
+      // line so COURSE_RE (which needs the code on the same line) can see the whole thing.
+      const colLines = [];
+      for (let k = 0; k < rawLines.length; k++) {
+        if (/^[A-Z]+$/.test(rawLines[k].text) && k + 1 < rawLines.length) {
+          colLines.push({ text: rawLines[k].text + ' ' + rawLines[k + 1].text, x: rawLines[k].x, y: rawLines[k].y });
+          k++;
+        } else {
+          colLines.push(rawLines[k]);
+        }
+      }
       for (let i = 0; i < colLines.length; i++) {
         if (!COURSE_RE.test(colLines[i].text)) continue;
         let block = colLines[i].text;
         const course = colLines[i].text.match(COURSE_RE)[0];
-        for (let j = i + 1; j < Math.min(i + 6, colLines.length) && !TIME_RANGE_RE.test(block); j++) {
+        let j = i + 1;
+        for (; j < Math.min(i + 6, colLines.length) && !TIME_RANGE_RE.test(block); j++) {
           if (COURSE_RE.test(colLines[j].text) && j > i + 1) break;
+          block += ' ' + colLines[j].text;
+        }
+        // The building/room can span a few lines after the one that completed the time range
+        // (e.g. "Michael G." / "DeGroote Cntr" / "1305") - grab up to 3, stopping at the next course.
+        for (let bn = 0; bn < 3 && j < colLines.length && !COURSE_RE.test(colLines[j].text); bn++, j++) {
           block += ' ' + colLines[j].text;
         }
         const timeMatch = block.match(TIME_RANGE_RE);
         if (!timeMatch) continue;
         const start = to24h(timeMatch[1]), end = to24h(timeMatch[2]);
         if (!start || !end || start === end) continue;
-        found.push({ day, start, end, course, building: matchBuilding(block) || '' });
+        const typeMatch = block.match(/\b(Lecture|Tutorial|Laboratory)\b/i);
+        const typeAbbr = typeMatch ? { lecture: 'LEC', tutorial: 'TUT', laboratory: 'LAB' }[typeMatch[1].toLowerCase()] : '';
+        found.push({ day, start, end, course: `${course} ${typeAbbr}`.trim(), building: matchBuilding(block) || '' });
       }
     });
   });
