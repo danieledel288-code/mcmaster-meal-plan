@@ -5,3 +5,8 @@ compatibility_date = "2026-08-01"
 [[kv_namespaces]]
 binding = "MEAL_PLAN_KV"
 id = "e841bc06bfa64f84a56d9184d4ae80f4"
+
+[[d1_databases]]
+binding = "USERS_DB"
+database_name = "mcmaster-meal-plan-users"
+database_id = "3ea15afa-1b5f-4e85-ad8a-0f2b19169e36"

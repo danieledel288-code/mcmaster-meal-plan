@@ -223,12 +223,22 @@
   .btn.small { padding: 7px 12px; font-size: 12.5px; }
   .save-bar { position: sticky; bottom: -60px; margin: 20px -28px -60px; padding: 14px 28px; background: var(--surface); border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
   .parse-note { font-size: 12px; color: var(--ink-dim); margin: -6px 0 10px; }
+  .auth-error { font-size: 12.5px; color: var(--over); background: var(--over-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+  .auth-switch { font-size: 12.5px; color: var(--ink-muted); margin-top: 14px; }
+  .auth-switch button { background: none; border: none; color: var(--gold); font-weight: 600; font-size: 12.5px; padding: 0; }
+  .auth-account { display: flex; align-items: center; gap: 10px; }
+  .auth-account .who { font-size: 12.5px; color: var(--ink); }
+  .auth-account .btn.small { padding: 6px 10px; font-size: 11.5px; }
 </style>
 </head>
 <body>
 
 <div class="settings-overlay hidden" id="settingsOverlay">
   <div class="settings-panel" id="settingsPanel"></div>
+</div>
+
+<div class="settings-overlay hidden" id="authOverlay">
+  <div class="settings-panel" id="authPanel" style="max-width:380px;"></div>
 </div>
 
 <header class="cmd">
@@ -240,6 +250,7 @@
       </div>
       <div class="cmd-actions">
         <div class="sync"><span class="dot" id="syncDot"></span><span id="syncLabel">Synced</span></div>
+        <button class="gear-btn" id="accountBtn"></button>
         <button class="gear-btn" id="openSettingsBtn"></button>
       </div>
     </div>
@@ -474,6 +485,7 @@ function getUserId() {
   window.history.replaceState({}, '', url.toString());
   return u;
 }
+const URL_HAD_U = new URL(window.location.href).searchParams.has('u');
 const USER_ID = getUserId();
 
 /* ---------- State ---------- */
@@ -866,6 +878,97 @@ function renderAll() {
 /* ---------- Settings panel ---------- */
 document.getElementById('openSettingsBtn').innerHTML = `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="15" cy="7" r="2.3" fill="currentColor" stroke="none"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="17" r="2.3" fill="currentColor" stroke="none"/></svg> Settings`;
 document.getElementById('openSettingsBtn').addEventListener('click', () => openSettings(false));
+
+/* ---------- Account (login / signup) ---------- */
+let sessionUser = null;
+const accountBtn = document.getElementById('accountBtn');
+const authOverlay = document.getElementById('authOverlay');
+const authPanel = document.getElementById('authPanel');
+
+async function checkSession() {
+  try {
+    const res = await fetch('/api/auth/me');
+    sessionUser = res.ok ? await res.json() : null;
+  } catch (e) { sessionUser = null; }
+  renderAccountBtn();
+  return sessionUser;
+}
+
+function renderAccountBtn() {
+  if (sessionUser) {
+    const short = sessionUser.email.length > 20 ? sessionUser.email.slice(0, 18) + '…' : sessionUser.email;
+    accountBtn.textContent = short;
+    accountBtn.title = sessionUser.email;
+  } else {
+    accountBtn.textContent = 'Log in';
+    accountBtn.title = '';
+  }
+}
+
+function closeAuth() { authOverlay.classList.add('hidden'); }
+
+function renderAccountPanel() {
+  authPanel.innerHTML = `
+    <div class="settings-head"><h2>Account</h2><button class="close-btn" id="closeAuthBtn">${svgIcon('x')}</button></div>
+    <p class="settings-intro">Logged in as <b>${sessionUser.email}</b>. This link's data is tied to your account, so logging in on another device will bring you here.</p>
+    <button class="btn secondary" id="logoutBtn">Log out</button>
+  `;
+  document.getElementById('closeAuthBtn').addEventListener('click', closeAuth);
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    sessionUser = null;
+    renderAccountBtn();
+    closeAuth();
+  });
+}
+
+function renderAuthForm(mode) {
+  const isSignup = mode === 'signup';
+  authPanel.innerHTML = `
+    <div class="settings-head"><h2>${isSignup ? 'Create account' : 'Log in'}</h2><button class="close-btn" id="closeAuthBtn">${svgIcon('x')}</button></div>
+    <p class="settings-intro">${isSignup
+      ? "Save this planner to an account so you can log in and get back to it from any device."
+      : 'Log in to reach the planner tied to your account.'}</p>
+    <div id="authErr"></div>
+    <div class="field-row"><label>Email</label><input type="email" id="authEmail" autocomplete="email"></div>
+    <div class="field-row"><label>Password</label><input type="password" id="authPassword" autocomplete="${isSignup ? 'new-password' : 'current-password'}"></div>
+    <button class="btn" id="authSubmitBtn" style="width:100%;margin-top:6px;">${isSignup ? 'Create account' : 'Log in'}</button>
+    <div class="auth-switch">${isSignup ? 'Already have an account?' : "Don't have an account?"} <button id="authSwitchBtn">${isSignup ? 'Log in' : 'Create one'}</button></div>
+  `;
+  document.getElementById('closeAuthBtn').addEventListener('click', closeAuth);
+  document.getElementById('authSwitchBtn').addEventListener('click', () => renderAuthForm(isSignup ? 'login' : 'signup'));
+  document.getElementById('authSubmitBtn').addEventListener('click', async () => {
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    const errEl = document.getElementById('authErr');
+    errEl.innerHTML = '';
+    try {
+      const res = await fetch(`/api/auth/${isSignup ? 'signup' : 'login'}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isSignup ? { email, password, claimUuid: USER_ID } : { email, password }),
+      });
+      if (!res.ok) { errEl.innerHTML = `<div class="auth-error">${await res.text()}</div>`; return; }
+      const data = await res.json();
+      closeAuth();
+      if (data.uuid !== USER_ID) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('u', data.uuid);
+        window.location.href = url.toString();
+      } else {
+        sessionUser = data;
+        renderAccountBtn();
+      }
+    } catch (e) {
+      errEl.innerHTML = `<div class="auth-error">Couldn't reach the server — try again.</div>`;
+    }
+  });
+}
+
+accountBtn.addEventListener('click', () => {
+  authOverlay.classList.remove('hidden');
+  if (sessionUser) renderAccountPanel(); else renderAuthForm('signup');
+});
+renderAccountBtn();
 
 function openSettings(forced) {
   const overlay = document.getElementById('settingsOverlay');
@@ -1269,9 +1372,17 @@ function parseScheduleText(text) {
 }
 
 /* ---------- Boot ---------- */
-loadState().then(() => {
-  if (!state.onboarded) { openSettings(true); }
-  renderAll();
+checkSession().then(user => {
+  if (user && !URL_HAD_U && user.uuid !== USER_ID) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('u', user.uuid);
+    window.location.href = url.toString();
+    return;
+  }
+  loadState().then(() => {
+    if (!state.onboarded) { openSettings(true); }
+    renderAll();
+  });
 });
 </script>
 </body>
