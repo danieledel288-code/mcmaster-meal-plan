@@ -51,11 +51,16 @@
   .gear-btn { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: #fff; border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
   .gear-btn:hover { background: rgba(255,255,255,0.2); }
 
-  .cmd-stats { display: flex; gap: 0; flex-wrap: wrap; }
-  .cmd-stat { padding: 0 22px 0 0; margin-right: 22px; border-right: 1px solid rgba(255,255,255,0.2); }
-  .cmd-stat:last-child { border-right: none; margin-right: 0; padding-right: 0; }
+  .cmd-stats { display: grid; grid-template-columns: repeat(4, auto); column-gap: 22px; row-gap: 12px; }
+  .cmd-stat { padding-right: 22px; border-right: 1px solid rgba(255,255,255,0.2); }
+  .cmd-stat:nth-child(4n) { border-right: none; padding-right: 0; }
   .cmd-stat .n { font-size: 24px; font-weight: 700; }
   .cmd-stat .l { font-size: 11.5px; color: rgba(255,255,255,0.68); margin-top: 1px; }
+  @media (max-width: 480px) {
+    .cmd-stats { grid-template-columns: repeat(2, 1fr); column-gap: 16px; }
+    .cmd-stat { border-right: none !important; padding-right: 0 !important; }
+    .cmd-stat:nth-child(odd) { border-right: 1px solid rgba(255,255,255,0.2) !important; padding-right: 16px !important; }
+  }
 
   .layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; padding: 20px clamp(16px, 4vw, 32px) 0; align-items: start; }
   @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
@@ -123,7 +128,7 @@
   .tl-window { color: var(--ink-muted); font-size: 12px; }
 
   .map-panel { padding: 0; overflow: hidden; }
-  .map-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px 0; flex-wrap: wrap; gap: 6px; }
+  .map-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px 10px; flex-wrap: wrap; gap: 6px; }
   .map-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; }
   .map-svg-wrap { background: var(--bg-map); height: 420px; position: relative; }
   #campusMapEl { width: 100%; height: 100%; background: var(--bg-map); }
@@ -200,10 +205,14 @@
   .icon-toggle { background: transparent; border: 1px solid var(--border); color: var(--ink-dim); border-radius: 7px; padding: 6px 8px; }
   .icon-toggle.on.fav { color: var(--gold); border-color: var(--gold-dim); }
   .icon-toggle.on.hide { color: var(--over); border-color: var(--over); }
-  .sched-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 10px; }
-  .sched-table th { text-align: left; color: var(--ink-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; padding: 4px 6px; }
+  .sched-table-wrap { overflow-x: auto; margin-bottom: 10px; }
+  .sched-table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 12.5px; }
+  .sched-table th { text-align: left; color: var(--ink-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; padding: 4px 6px; white-space: nowrap; }
   .sched-table td { padding: 4px 6px; }
   .sched-table input, .sched-table select { width: 100%; padding: 6px 7px; font-size: 12px; }
+  .sched-table td:has(select[data-sf="day"]) select { min-width: 62px; }
+  .sched-table td:has(input[data-sf="start"]) input, .sched-table td:has(input[data-sf="end"]) input { min-width: 92px; }
+  .sched-table td:has(select[data-sf="building"]) select { min-width: 74px; }
   .row-del { background: transparent; border: none; color: var(--over); padding: 4px; }
   .upload-zone { border: 1.5px dashed var(--border); border-radius: 12px; padding: 20px; text-align: center; color: var(--ink-muted); font-size: 13px; margin-bottom: 14px; cursor: pointer; }
   .upload-zone:hover { border-color: var(--fireball); }
@@ -781,7 +790,7 @@ function renderConsole() {
       <div class="panel map-panel">
         <div class="map-head"><span class="map-title">${svgIcon('mapPin')} Campus map</span>${classSel
           ? `<span class="map-title" style="color:var(--fireball)">${svgIcon('footprints')} ${walkMinutes(classFromBuilding, classSel.building) ?? 0} min to ${classSel.course}</span>`
-          : `<span class="map-title" style="color:var(--gold)">${TIER_LABEL[1]} under $9 &nbsp; ${TIER_LABEL[2]} $9–13 &nbsp; ${TIER_LABEL[3]} $14+</span>`}</div>
+          : ''}</div>
         <div class="map-svg-wrap"><div id="campusMapEl"></div></div>
       </div>
       <div class="panel">
@@ -930,12 +939,14 @@ function renderSettings(forced) {
       <div class="field-row">
         <label>Or paste your MyTimetable "Class Schedule" text list instead (more reliable than the PDF)</label>
         <textarea id="scheduleTextInput" rows="5" placeholder="Paste the plain-text class schedule list here…" style="font-family:'Overpass Mono',monospace; font-size:11.5px; resize:vertical;"></textarea>
-        <button class="btn secondary small" id="parseTextBtn" style="align-self:flex-start; margin-top:6px;">Parse pasted text</button>
+        <button class="btn secondary small" id="parseTextBtn" style="align-self:flex-start; margin-top:6px;">Enter schedule</button>
       </div>
-      <table class="sched-table">
-        <thead><tr><th>Day</th><th>Start</th><th>End</th><th>Course</th><th>Building</th><th></th></tr></thead>
-        <tbody id="schedBody">${schedRows}</tbody>
-      </table>
+      <div class="sched-table-wrap">
+        <table class="sched-table">
+          <thead><tr><th>Day</th><th>Start</th><th>End</th><th>Course</th><th>Building</th><th></th></tr></thead>
+          <tbody id="schedBody">${schedRows}</tbody>
+        </table>
+      </div>
       <button class="btn secondary small" id="addRowBtn">${svgIcon('plus')} Add class</button>
     </div>
 
