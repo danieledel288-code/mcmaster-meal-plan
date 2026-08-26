@@ -112,6 +112,14 @@
   .tl-row.tl-meal .tl-time { color: var(--gold); font-weight: 600; }
   .tl-row.tl-meal .tl-body b { color: var(--gold); display: inline-flex; align-items: center; gap: 6px; }
   .tl-row.tl-meal .tl-body b svg.icon { width: 13px; height: 13px; }
+  .tl-row.tl-class { cursor: pointer; border-radius: 8px; margin: 0 -8px; padding: 0 8px; }
+  .tl-row.tl-class:hover { background: var(--surface-2); }
+  .tl-row.tl-class .tl-loc { display: flex; align-items: center; gap: 5px; }
+  .tl-row.tl-class .tl-loc svg.icon { width: 11px; height: 11px; opacity: 0; transition: opacity .15s; }
+  .tl-row.tl-class:hover .tl-loc svg.icon { opacity: .6; }
+  .tl-row.tl-class.active { background: var(--fireball-fill); }
+  .tl-row.tl-class.active .tl-dot { background: var(--fireball); width: 12px; height: 12px; margin-top: 1px; }
+  .tl-row.tl-class.active .tl-loc svg.icon { opacity: 1; color: var(--fireball); }
   .tl-window { color: var(--ink-muted); font-size: 12px; }
 
   .map-panel { padding: 0; overflow: hidden; }
@@ -128,12 +136,14 @@
   .venue-pin { display: flex; align-items: center; gap: 4px; background: var(--surface-2); border: 1.5px solid var(--border); border-radius: 8px; padding: 4px 7px; font-family: 'Overpass Mono', monospace; font-weight: 700; font-size: 11px; color: #fff; white-space: nowrap; cursor: pointer; box-shadow: var(--shadow); }
   .venue-pin.selected { background: var(--fireball); border-color: var(--gold); }
   .venue-pin svg.icon { width: 14px; height: 14px; }
-  .path-dist-label { font-family: 'Overpass Mono', monospace; font-size: 10.5px; font-weight: 700; color: var(--gold); background: rgba(21,10,13,0.85); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+  .path-dist-label { font-family: 'Overpass Mono', monospace; font-size: 10.5px; font-weight: 700; background: rgba(21,10,13,0.85); padding: 2px 7px 2px 5px; border-radius: 5px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; border: 1px solid; }
+  .path-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 6px solid; flex: none; }
 
   .meal-tabs { display: flex; gap: 6px; margin-top: 14px; margin-bottom: 14px; }
   .meal-tab { flex: 1; padding: 10px 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-muted); display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; }
   .meal-tab svg.icon { width: 17px; height: 17px; }
-  .meal-tab.active { background: var(--fireball-fill); border-color: var(--fireball); color: #fff; }
+  .meal-tab.active { background: var(--gold); border-color: var(--gold); color: var(--bg); box-shadow: 0 3px 12px rgba(232,179,85,0.3); }
+  .meal-tab.active svg.icon { color: var(--bg); }
   .eat-time { display: flex; align-items: baseline; gap: 8px; margin-bottom: 14px; }
   .eat-time .n { font-family: 'Overpass Mono', monospace; font-size: 26px; font-weight: 700; color: var(--gold); }
   .eat-time .l { font-size: 12.5px; color: var(--ink-muted); }
@@ -312,6 +322,12 @@ function haversine(a, b) {
   const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
   const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(s));
+}
+function bearingDeg(a, b) {
+  const toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
+  const y = Math.sin(toRad(b.lon - a.lon)) * Math.cos(toRad(b.lat));
+  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lon - a.lon));
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 function walkMinutes(idA, idB) {
   if (!BUILDINGS[idA] || !BUILDINGS[idB]) return null;
@@ -518,8 +534,9 @@ function renderMap(containerId, anchorBuilding, venueBuilding, relevantIds, retu
   ids.forEach(id => {
     const isFood = Object.values(VENUES).some(v => v.building === id);
     const isAnchor = id === anchorBuilding;
-    const color = isAnchor ? '#E8B355' : isFood ? '#DD4B1F' : '#6E5C64';
-    const fill = isAnchor ? '#E8B355' : isFood ? '#8A2C10' : '#2A1820';
+    const isTarget = id === venueBuilding;
+    const color = isAnchor ? '#E8B355' : (isFood || isTarget) ? '#DD4B1F' : '#6E5C64';
+    const fill = isAnchor ? '#E8B355' : (isFood || isTarget) ? '#8A2C10' : '#2A1820';
     const poly = BUILDING_POLYGONS[id];
     let layer;
     if (poly) {
@@ -533,16 +550,24 @@ function renderMap(containerId, anchorBuilding, venueBuilding, relevantIds, retu
     layer.bindTooltip(`${BUILDINGS[id].short}${BUILDINGS[id].approx ? ' (approx.)' : ''}`, { permanent: true, direction: 'center', className: 'bldg-tag', opacity: 1 });
   });
 
-  const drawLeg = (fromId, toId) => {
+  const drawLeg = (fromId, toId, color, label) => {
     if (!fromId || !toId || fromId === toId || !BUILDINGS[fromId] || !BUILDINGS[toId]) return;
-    const a = [BUILDINGS[fromId].lat, BUILDINGS[fromId].lon];
-    const v = [BUILDINGS[toId].lat, BUILDINGS[toId].lon];
-    L.polyline([a, v], { color: '#E8B355', weight: 2, dashArray: '4 5' }).addTo(map);
+    const fb = BUILDINGS[fromId], tb = BUILDINGS[toId];
+    const a = [fb.lat, fb.lon], v = [tb.lat, tb.lon];
+    L.polyline([a, v], { color, weight: 2.5, dashArray: '5 6' }).addTo(map);
     const mid = [(a[0] + v[0]) / 2, (a[1] + v[1]) / 2];
-    L.marker(mid, { icon: L.divIcon({ className: '', html: `<span class="path-dist-label">${walkMinutes(fromId, toId)} min</span>`, iconSize: null }), interactive: false }).addTo(map);
+    const bearing = bearingDeg(fb, tb);
+    L.marker(mid, {
+      icon: L.divIcon({
+        className: '', iconSize: null,
+        html: `<span class="path-dist-label" style="color:${color};border-color:${color}"><span class="path-arrow" style="border-bottom-color:${color};transform:rotate(${bearing}deg)"></span>${label ? label + ' · ' : ''}${walkMinutes(fromId, toId)} min</span>`,
+      }), interactive: false,
+    }).addTo(map);
   };
-  drawLeg(anchorBuilding, venueBuilding);
-  drawLeg(venueBuilding, returnBuilding);
+  const legDefs = [[anchorBuilding, venueBuilding], [venueBuilding, returnBuilding]];
+  const numberLegs = legDefs.filter(([f, t]) => f && t && f !== t && BUILDINGS[f] && BUILDINGS[t]).length > 1;
+  drawLeg(anchorBuilding, venueBuilding, '#E8B355', numberLegs ? '1' : null);
+  drawLeg(venueBuilding, returnBuilding, '#DD4B1F', numberLegs ? '2' : null);
 
   ids.forEach(id => {
     const venuesHere = Object.entries(VENUES).filter(([vid, v]) => v.building === id);
@@ -562,6 +587,7 @@ function renderMap(containerId, anchorBuilding, venueBuilding, relevantIds, retu
 let activeMonth = 0;
 let selectedDate = null;
 let activeMealKey = 'breakfast';
+let selectedClassIdx = null;
 function monthsInTerm() {
   const start = new Date(state.termStart + 'T00:00:00');
   const end = new Date(state.termEnd + 'T00:00:00');
@@ -678,7 +704,7 @@ function renderConsole() {
   const brk = anchorForMeal(meta, 'breakfast');
   scheduleHtml += mealRow('breakfast', brk.label, brk.window);
   meta.classes.forEach((c, i) => {
-    scheduleHtml += `<div class="tl-row"><div class="tl-time mono">${fmtTime(c.start)}</div><div class="tl-rail"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-body"><b>${c.course}</b><div class="tl-loc">${c.loc || (BUILDINGS[c.building] ? BUILDINGS[c.building].name : '')}</div></div></div>`;
+    scheduleHtml += `<div class="tl-row tl-class${selectedClassIdx === i ? ' active' : ''}" data-class-idx="${i}"><div class="tl-time mono">${fmtTime(c.start)}</div><div class="tl-rail"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-body"><b>${c.course}</b><div class="tl-loc">${svgIcon('footprints')} ${c.loc || (BUILDINGS[c.building] ? BUILDINGS[c.building].name : '')}</div></div></div>`;
     if (meta.lunch && c.end === meta.lunch.start) {
       const lk = anchorForMeal(meta, 'lunch');
       scheduleHtml += mealRow('lunch', lk.label, lk.window);
@@ -689,6 +715,10 @@ function renderConsole() {
   scheduleHtml += `</div>`;
   if (!meta.classes.length && !special) scheduleHtml = `<div class="banner">${svgIcon('house')} No classes today — meals below are flexible.</div>` + scheduleHtml;
   if (special) scheduleHtml += `<div class="banner">${svgIcon('mapPin')} ${special.note}</div>`;
+
+  if (selectedClassIdx !== null && !meta.classes[selectedClassIdx]) selectedClassIdx = null;
+  const classSel = selectedClassIdx !== null ? meta.classes[selectedClassIdx] : null;
+  const classFromBuilding = classSel ? (selectedClassIdx === 0 ? state.residence : meta.classes[selectedClassIdx - 1].building) : null;
 
   let bodyHtml;
   if (isHome) {
@@ -749,7 +779,9 @@ function renderConsole() {
 
     bodyHtml = `
       <div class="panel map-panel">
-        <div class="map-head"><span class="map-title">${svgIcon('mapPin')} Campus map</span><span class="map-title" style="color:var(--gold)">${TIER_LABEL[1]} under $9 &nbsp; ${TIER_LABEL[2]} $9–13 &nbsp; ${TIER_LABEL[3]} $14+</span></div>
+        <div class="map-head"><span class="map-title">${svgIcon('mapPin')} Campus map</span>${classSel
+          ? `<span class="map-title" style="color:var(--fireball)">${svgIcon('footprints')} ${walkMinutes(classFromBuilding, classSel.building) ?? 0} min to ${classSel.course}</span>`
+          : `<span class="map-title" style="color:var(--gold)">${TIER_LABEL[1]} under $9 &nbsp; ${TIER_LABEL[2]} $9–13 &nbsp; ${TIER_LABEL[3]} $14+</span>`}</div>
         <div class="map-svg-wrap"><div id="campusMapEl"></div></div>
       </div>
       <div class="panel">
@@ -777,10 +809,16 @@ function renderConsole() {
     else state.homeDays.push(key);
     persist();
   });
-  el.querySelectorAll('.meal-tab').forEach(btn => btn.addEventListener('click', () => { activeMealKey = btn.dataset.meal; renderConsole(); }));
+  el.querySelectorAll('.meal-tab').forEach(btn => btn.addEventListener('click', () => { activeMealKey = btn.dataset.meal; selectedClassIdx = null; renderConsole(); }));
   el.querySelectorAll('.tl-meal').forEach(row => row.addEventListener('click', () => {
-    activeMealKey = row.dataset.meal; renderConsole();
+    activeMealKey = row.dataset.meal; selectedClassIdx = null; renderConsole();
     document.querySelector('.meal-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+  el.querySelectorAll('.tl-class').forEach(row => row.addEventListener('click', () => {
+    const idx = Number(row.dataset.classIdx);
+    selectedClassIdx = selectedClassIdx === idx ? null : idx;
+    renderConsole();
+    document.querySelector('.map-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }));
   el.querySelectorAll('.option-row').forEach(btn => btn.addEventListener('click', () => {
     state.venueChoices[`${wk}_${activeMealKey}`] = btn.dataset.venue; persist();
@@ -788,7 +826,10 @@ function renderConsole() {
   window.__onVenuePinClick = (vid) => {
     state.venueChoices[`${wk}_${activeMealKey}`] = vid; persist();
   };
-  if (!isHome) {
+  if (!isHome && classSel) {
+    const relevantIdsC = [classFromBuilding, classSel.building].filter(Boolean);
+    renderMap('campusMapEl', classFromBuilding, classSel.building, relevantIdsC);
+  } else if (!isHome) {
     const meta2 = meta;
     const anchor2 = anchorForMeal(meta2, activeMealKey);
     const opts2 = candidateOptions(anchor2.building, state.dietary, state.favoriteVenues, state.hiddenVenues);
