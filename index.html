@@ -332,6 +332,7 @@ const BUILDINGS = {
   hamiltonhall: { name: 'Hamilton Hall', short: 'Hamilton Hall', lat: 43.2631080, lon: -79.9201267 },
   braleyathletic: { name: 'David Braley Athletic Centre', short: 'DBAC', lat: 43.2650972, lon: -79.9162741 },
   iahs:     { name: 'Institute for Applied Health Sciences', short: 'IAHS', lat: 43.2595850, lon: -79.9207270 },
+  psych:    { name: 'Psychology Building', short: 'PC', lat: 43.2596734, lon: -79.9195298 },
 };
 const RESIDENCE_IDS = ['pgcll','keyes','bates','matthews','whidden','edwards','wallingford','moulton','woodstock','brandon','hedden'];
 const CAMPUS_BOUNDS = (() => {
@@ -1165,6 +1166,7 @@ const SECTION_RE = /\b(LEC|LAB|TUT)\s*[A-Z]?\d+/i;
 const BUILDING_CODE_MAP = {
   PGCLL: 'pgcll', MKR: 'keyes', ETB: 'engtech', JHE: 'hodgins', ABB: 'bourns',
   MDCL: 'degroote', BSB: 'burke', THDL: 'thode', MUSC: 'musc', CNH: 'degroote',
+  PC: 'psych',
 };
 function to24h(t) {
   const m = t.match(/(\d{1,2}):(\d{2})\s*([AP]M)/i);
