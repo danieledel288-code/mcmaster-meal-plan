@@ -314,7 +314,7 @@ const BUILDINGS = {
   keyes:    { name: 'Mary E. Keyes Residence', short: 'Keyes', lat: 43.2627192, lon: -79.9227179 },
   commons:  { name: 'Commons Building', short: 'Commons', lat: 43.2655499, lon: -79.9192858 },
   musc:     { name: 'McMaster University Student Centre', short: 'MUSC', lat: 43.2634666, lon: -79.9178128 },
-  degroote: { name: 'Michael G. DeGroote Centre', short: 'DeGroote', lat: 43.2610718, lon: -79.9168621 },
+  degroote: { name: 'Michael DeGroote Centre for Learning & Discovery', short: 'MDCL', lat: 43.2610718, lon: -79.9168621 },
   burke:    { name: 'Burke Science Building', short: 'Burke', lat: 43.2620116, lon: -79.9203971 },
   hodgins:  { name: 'John Hodgins Engineering Bldg', short: 'Hodgins', lat: 43.2607489, lon: -79.9204265 },
   thode:    { name: 'H.G. Thode Library', short: 'Thode', lat: 43.2611035, lon: -79.9225817 },
@@ -329,6 +329,9 @@ const BUILDINGS = {
   woodstock:{ name: 'Woodstock Hall', short: 'Woodstock', lat: 43.2659344, lon: -79.9191200 },
   brandon:  { name: 'Brandon Hall', short: 'Brandon', lat: 43.2659417, lon: -79.9198411 },
   hedden:   { name: 'Hedden Hall', short: 'Hedden', lat: 43.2664345, lon: -79.9183565 },
+  hamiltonhall: { name: 'Hamilton Hall', short: 'Hamilton Hall', lat: 43.2631080, lon: -79.9201267 },
+  braleyathletic: { name: 'David Braley Athletic Centre', short: 'DBAC', lat: 43.2650972, lon: -79.9162741 },
+  iahs:     { name: 'Institute for Applied Health Sciences', short: 'IAHS', lat: 43.2595850, lon: -79.9207270 },
 };
 const RESIDENCE_IDS = ['pgcll','keyes','bates','matthews','whidden','edwards','wallingford','moulton','woodstock','brandon','hedden'];
 const CAMPUS_BOUNDS = (() => {
@@ -395,6 +398,24 @@ const VENUES = {
     items: [{ item: 'Breakfast wrap + coffee', price: 5.79, est: true, note: 'Mon–Fri 7:30am–4pm' }] },
   reactorcafe:{ name: 'The Reactor Café', building: 'thode', icon: 'coffee', tier: 1,
     items: [{ item: 'Quesadilla', price: 11.49, note: 'Weekday daytime hours only, approximate' }] },
+  boosterjuice:{ name: 'Booster Juice', building: 'musc', icon: 'coffee', tier: 1,
+    items: [{ item: 'Smoothie', price: 7.99, est: true, dietary: ['vegetarian'] }] },
+  starbucks:  { name: 'Starbucks', building: 'musc', icon: 'coffee', tier: 2,
+    items: [{ item: 'Coffee + pastry', price: 7.25, est: true }] },
+  cafeone:    { name: 'Café One', building: 'degroote', icon: 'forkKnife', tier: 1,
+    items: [{ item: 'Grab n’ go sandwich or salad', price: 8.99, est: true }] },
+  caffeineelements:{ name: 'Caffeine The Elements', building: 'burke', icon: 'coffee', tier: 1,
+    items: [{ item: 'Coffee + snack', price: 6.49, est: true }] },
+  ecafe:      { name: 'E-Café', building: 'engtech', icon: 'forkKnife', tier: 1,
+    items: [{ item: 'Grab n’ go sandwich', price: 7.49, est: true }] },
+  fireballcafe:{ name: 'Fireball Café', building: 'hodgins', icon: 'coffee', tier: 1,
+    items: [{ item: 'Coffee + snack', price: 6.49, est: true, note: 'Open 24/7' }] },
+  mathcafe:   { name: 'Math Cafe', building: 'hamiltonhall', icon: 'coffee', tier: 1,
+    items: [{ item: 'Coffee + snack', price: 5.99, est: true }] },
+  refuellingstation:{ name: 'Refuelling Station', building: 'braleyathletic', icon: 'coffee', tier: 1,
+    items: [{ item: 'Smoothie', price: 7.99, est: true, dietary: ['vegetarian'] }] },
+  iahscafe:   { name: 'IAHS Café', building: 'iahs', icon: 'cookingPot', tier: 2,
+    items: [{ item: 'Made-to-order pasta', price: 10.99, est: true }] },
 };
 const TIER_LABEL = { 1: '$', 2: '$$', 3: '$$$' };
 const MEAL_ICON = { breakfast: 'sunHorizon', lunch: 'sun', dinner: 'moonStars' };
