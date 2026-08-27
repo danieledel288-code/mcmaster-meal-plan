@@ -1178,6 +1178,14 @@ const DAY_ABBR = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const DAY_NAMES_RE = /(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)/i;
 const TIME_RANGE_RE = /(\d{1,2}:\d{2}\s*[AP]M)\s*(?:[-–]|to)\s*(\d{1,2}:\d{2}\s*[AP]M)/i;
 const DAYTIME_LINE_RE = /((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:\s*,\s*(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun))*)\s*:\s*(\d{1,2}:\d{2}\s*[AP]M)\s*to\s*(\d{1,2}:\d{2}\s*[AP]M)/i;
+/* A section that meets on alternating (biweekly) dates prints its OWN per-date-range line
+   instead of the plain "Day : Time to Time" summary form, e.g.
+   "Wed Sep 14 - Sep 18: 2:30 PM to 5:20 PM". Same day+time info, just with a date-range clause
+   wedged before the colon - matched separately so the summary regex doesn't need to change. */
+const DAYTIME_DATERANGE_LINE_RE = /((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun))\s+[A-Za-z]+\s+\d{1,2}\s*[-–]\s*[A-Za-z]+\s+\d{1,2}\s*:\s*(\d{1,2}:\d{2}\s*[AP]M)\s*to\s*(\d{1,2}:\d{2}\s*[AP]M)/i;
+function matchDayTime(text) {
+  return text.match(DAYTIME_LINE_RE) || text.match(DAYTIME_DATERANGE_LINE_RE);
+}
 const COURSE_RE = /^[A-Z]{2,10}\s?\d[\w]{1,4}/;
 const SECTION_RE = /\b(LEC|LAB|TUT)\s*[A-Z]?\d+/i;
 const BUILDING_CODE_MAP = {
@@ -1256,60 +1264,94 @@ function courseCodeIn(text) {
 }
 function parseDetailFormat(pages) {
   const found = [];
-  pages.forEach(page => {
-    const lines = page.lines;
-    let i = 0;
-    while (i < lines.length) {
-      const text = lines[i].text;
-      if (!TERM_LINE_RE.test(text) || !courseCodeIn(text)) { i++; continue; }
-      const course = courseCodeIn(text);
+  // A course's own section list can be cut off by a page break (its term-line lands near the
+  // bottom of one page, its LEC/LAB/TUT headers start the next). Processing each page in
+  // isolation loses that course's sections entirely once cut off, since course context doesn't
+  // carry across the page boundary. Flatten into one continuous stream instead - stray
+  // header/footer lines from each page (timestamps, page-number URLs) don't match any of the
+  // patterns below, so they're harmless no-ops in the scan.
+  const lines = pages.flatMap(page => page.lines);
+  let i = 0;
+  while (i < lines.length) {
+    const text = lines[i].text;
+    if (!TERM_LINE_RE.test(text) || !courseCodeIn(text)) { i++; continue; }
+    const course = courseCodeIn(text);
+    i++;
+    // Course-level summary lines (before any section header) list every distinct day/time
+    // pattern for the course, but NOT which section owns each one - that has to be inferred.
+    const summary = [];
+    while (i < lines.length && !SECTION_RE.test(lines[i].text) && !(TERM_LINE_RE.test(lines[i].text) && courseCodeIn(lines[i].text))) {
+      const dt = matchDayTime(lines[i].text);
+      if (dt) summary.push({ dt, isDateRange: DAYTIME_DATERANGE_LINE_RE.test(lines[i].text), dayCount: dt[1].split(',').length, used: false });
       i++;
-      const summary = [];
-      while (i < lines.length && !SECTION_RE.test(lines[i].text) && !(TERM_LINE_RE.test(lines[i].text) && courseCodeIn(lines[i].text))) {
-        const dt = lines[i].text.match(DAYTIME_LINE_RE);
-        if (dt) summary.push(dt);
-        i++;
-      }
-      let sIdx = 0;
-      while (i < lines.length && !(TERM_LINE_RE.test(lines[i].text) && courseCodeIn(lines[i].text))) {
-        const secMatch = lines[i].text.match(SECTION_RE);
-        if (!secMatch) { i++; continue; }
-        const section = secMatch[0].toUpperCase().replace(/\s+/, ' ');
-        i++;
-        const sectionLines = [];
-        while (i < lines.length && !SECTION_RE.test(lines[i].text) && !(TERM_LINE_RE.test(lines[i].text) && courseCodeIn(lines[i].text))) {
-          sectionLines.push(lines[i].text); i++;
-        }
-        let usedInline = false;
-        sectionLines.forEach(t => {
-          const dt = t.match(DAYTIME_LINE_RE);
-          if (!dt) return;
-          const start = to24h(dt[2]), end = to24h(dt[3]);
-          if (!start || !end || start === end) return;
-          const building = matchBuilding(t);
-          usedInline = true;
-          dt[1].split(',').map(d => d.trim().toLowerCase().slice(0, 3)).forEach(abbr => {
-            const day = DAY_ABBR.indexOf(abbr);
-            if (day < 0) return;
-            found.push({ day, start, end, course: `${course} ${section}`, building: building || '' });
-          });
-        });
-        if (!usedInline && sIdx < summary.length) {
-          const dt = summary[sIdx]; sIdx++;
-          const start = to24h(dt[2]), end = to24h(dt[3]);
-          let building = '';
-          for (const t of sectionLines) { const b = matchBuilding(t); if (b) { building = b; break; } }
-          if (start && end && start !== end) {
-            dt[1].split(',').map(d => d.trim().toLowerCase().slice(0, 3)).forEach(abbr => {
-              const day = DAY_ABBR.indexOf(abbr);
-              if (day < 0) return;
-              found.push({ day, start, end, course: `${course} ${section}`, building });
-            });
-          }
-        }
-      }
     }
-  });
+    const sections = [];
+    while (i < lines.length && !(TERM_LINE_RE.test(lines[i].text) && courseCodeIn(lines[i].text))) {
+      const secMatch = lines[i].text.match(SECTION_RE);
+      if (!secMatch) { i++; continue; }
+      const section = secMatch[0].toUpperCase().replace(/\s+/, ' ');
+      i++;
+      const sectionLines = [];
+      while (i < lines.length && !SECTION_RE.test(lines[i].text) && !(TERM_LINE_RE.test(lines[i].text) && courseCodeIn(lines[i].text))) {
+        sectionLines.push(lines[i].text); i++;
+      }
+      const inlineEntries = [];
+      sectionLines.forEach(t => {
+        const dt = matchDayTime(t);
+        if (!dt) return;
+        const start = to24h(dt[2]), end = to24h(dt[3]);
+        if (!start || !end || start === end) return;
+        const building = matchBuilding(t);
+        dt[1].split(',').map(d => d.trim().toLowerCase().slice(0, 3)).forEach(abbr => {
+          const day = DAY_ABBR.indexOf(abbr);
+          if (day < 0) return;
+          inlineEntries.push({ day, start, end, building: building || '' });
+        });
+      });
+      sections.push({ section, sectionLines, inlineEntries, claimed: [] });
+    }
+    sections.forEach(s => {
+      s.inlineEntries.forEach(e => found.push({ day: e.day, start: e.start, end: e.end, course: `${course} ${s.section}`, building: e.building }));
+    });
+    // Sections with their own inline day/time (above) never touch the course-level summary.
+    // For the rest, matching a leftover summary line to the RIGHT section is genuinely
+    // ambiguous from text alone - McMaster's summary widget just lists every distinct pattern,
+    // not which section it belongs to. Two real signals narrow it down: a LAB/TUT section is
+    // far more likely to be the one with an alternating (biweekly, date-ranged) pattern than a
+    // LEC is, and a LAB/TUT's single distinct weekly slot is far more likely to be the LAST
+    // listed pattern than one of the LEC's several. Neither is proof, just a tiebreaker for the
+    // (rare) genuinely unresolvable case - anything still ambiguous after these two passes
+    // defaults to the non-LAB/TUT section, same as before.
+    const pending = sections.filter(s => !s.inlineEntries.length);
+    pending.forEach(s => {
+      if (!/^(LAB|TUT)/.test(s.section)) return;
+      const cand = summary.find(e => !e.used && e.isDateRange);
+      if (cand) { cand.used = true; s.claimed.push(cand); }
+    });
+    pending.forEach(s => {
+      if (!/^(LAB|TUT)/.test(s.section) || s.claimed.length) return;
+      for (let k = summary.length - 1; k >= 0; k--) {
+        if (summary[k].used) continue;
+        if (summary[k].dayCount === 1) { summary[k].used = true; s.claimed.push(summary[k]); }
+        break;
+      }
+    });
+    const catchAll = pending.find(s => !/^(LAB|TUT)/.test(s.section)) || pending[0];
+    if (catchAll) summary.forEach(e => { if (!e.used) { e.used = true; catchAll.claimed.push(e); } });
+    pending.forEach(s => {
+      s.claimed.forEach(({ dt }) => {
+        const start = to24h(dt[2]), end = to24h(dt[3]);
+        if (!start || !end || start === end) return;
+        let building = '';
+        for (const t of s.sectionLines) { const b = matchBuilding(t); if (b) { building = b; break; } }
+        dt[1].split(',').map(d => d.trim().toLowerCase().slice(0, 3)).forEach(abbr => {
+          const day = DAY_ABBR.indexOf(abbr);
+          if (day < 0) return;
+          found.push({ day, start, end, course: `${course} ${s.section}`, building });
+        });
+      });
+    });
+  }
   return found;
 }
 
