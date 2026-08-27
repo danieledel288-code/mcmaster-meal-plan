@@ -1,0 +1,12 @@
+{
+  "name": "mcmaster-meal-plan",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev",
+    "db:migrate:local": "wrangler d1 migrations apply mcmaster-meal-plan-users --local",
+    "db:migrate:remote": "wrangler d1 migrations apply mcmaster-meal-plan-users --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.42.0"
+  }
+}
