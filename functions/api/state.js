@@ -16,6 +16,8 @@ const DEFAULT_STATE = {
   homeDays: [],
   venueChoices: {},
   onboarded: false,
+  mealPlan: 'custom',
+  budgetMode: 'term',
   updatedAt: null,
 };
 
@@ -41,6 +43,8 @@ function rowToState(row, scheduleRows) {
     homeDays: JSON.parse(row.home_days),
     venueChoices: JSON.parse(row.venue_choices),
     onboarded: !!row.onboarded,          // stored as 0 / 1, exposed as a boolean
+    mealPlan: row.meal_plan,
+    budgetMode: row.budget_mode,
     updatedAt: row.updated_at,
     schedule: scheduleRows.map(r => ({
       day: r.day,
@@ -65,8 +69,9 @@ async function writeState(db, uuid, incoming) {
     db.prepare(`
       INSERT INTO user_state
         (state_uuid, residence, term_budget, term_start, term_end, onboarded,
-         dietary, home_days, favorite_venues, hidden_venues, venue_choices, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         dietary, home_days, favorite_venues, hidden_venues, venue_choices,
+         meal_plan, budget_mode, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(state_uuid) DO UPDATE SET
         residence       = excluded.residence,
         term_budget     = excluded.term_budget,
@@ -78,12 +83,15 @@ async function writeState(db, uuid, incoming) {
         favorite_venues = excluded.favorite_venues,
         hidden_venues   = excluded.hidden_venues,
         venue_choices   = excluded.venue_choices,
+        meal_plan       = excluded.meal_plan,
+        budget_mode     = excluded.budget_mode,
         updated_at      = excluded.updated_at
     `).bind(
       uuid, s.residence, s.termBudget, s.termStart, s.termEnd, s.onboarded ? 1 : 0,
       JSON.stringify(s.dietary), JSON.stringify(s.homeDays),
       JSON.stringify(s.favoriteVenues), JSON.stringify(s.hiddenVenues),
-      JSON.stringify(s.venueChoices), s.updatedAt,
+      JSON.stringify(s.venueChoices),
+      s.mealPlan || 'custom', s.budgetMode || 'term', s.updatedAt,
     ),
     db.prepare('DELETE FROM schedule_entries WHERE state_uuid = ?').bind(uuid),
     ...s.schedule.map((c, i) => db.prepare(`

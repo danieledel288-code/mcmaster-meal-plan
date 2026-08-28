@@ -67,8 +67,8 @@
 
   .rail { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; position: sticky; top: 16px; }
   @media (max-width: 880px) { .rail { position: static; } }
-  .month-tabs { display: flex; gap: 5px; margin-bottom: 12px; }
-  .month-btn { flex: 1; font-weight: 600; font-size: 13px; padding: 7px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-muted); }
+  .month-tabs { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+  .month-btn { flex: 1 1 auto; min-width: 44px; font-weight: 600; font-size: 13px; padding: 7px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-muted); }
   .month-btn:hover { border-color: var(--fireball); color: var(--ink); }
   .month-btn.active { background: var(--fireball); color: #fff; border-color: var(--fireball); }
   .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; }
@@ -197,6 +197,24 @@
   .field-row label { font-size: 12.5px; color: var(--ink-muted); }
   .field-inline { display: flex; gap: 10px; }
   .field-inline .field-row { flex: 1; }
+  .field-row input[readonly] { opacity: 0.6; cursor: not-allowed; }
+  .toggle-row { display: flex; gap: 6px; }
+  .toggle-row .tgl { flex: 1; font-weight: 600; font-size: 12.5px; padding: 8px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-muted); }
+  .toggle-row .tgl.active { background: var(--fireball); border-color: var(--fireball); color: #fff; }
+  .pace-line { font-size: 12px; line-height: 1.5; color: var(--ink-muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 4px 0 0; }
+  .pace-line b { color: var(--ink); }
+  .explainer { margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+  .explainer > summary { cursor: pointer; padding: 10px 12px; font-size: 12.5px; font-weight: 600; color: var(--gold); list-style: none; }
+  .explainer > summary::-webkit-details-marker { display: none; }
+  .explainer > summary::before { content: "＋ "; }
+  .explainer[open] > summary::before { content: "－ "; }
+  .explainer > div { padding: 0 12px 12px; font-size: 12px; line-height: 1.6; color: var(--ink-muted); }
+  .explainer p { margin: 6px 0; }
+  .explainer ul { margin: 6px 0; padding-left: 18px; }
+  .explainer b { color: var(--ink); }
+  .mcmaster-ref { font-size: 12px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .mcmaster-ref b { color: var(--gold); font-variant-numeric: tabular-nums; }
+  .mcmaster-ref svg { width: 13px; height: 13px; flex-shrink: 0; }
   .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { padding: 7px 13px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-muted); font-size: 12.5px; font-weight: 600; }
   .chip.active { background: var(--fireball); border-color: var(--fireball); color: #fff; }
@@ -425,12 +443,70 @@ const MEAL_LABEL = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' };
 const DIETARY_OPTIONS = ['vegetarian', 'vegan', 'halal', 'glutenfree'];
 const DIETARY_LABEL = { vegetarian: 'Vegetarian', vegan: 'Vegan', halal: 'Halal', glutenfree: 'Gluten-Free' };
 
+/* ---------- McMaster meal plans (2026-2027 official Budget Planner) ----------
+   `visible` = the declining balance you see in MacExpress (from the official sheet).
+   `weekly`  = McMaster's recommended weekly burn of that visible balance.
+   Every purchase draws 50% visible + 50% overhead match, so real spending power
+   is 2x: effective total = visible * 2, effective daily = (weekly / 7) * 2.       */
+const PLAN_YEAR_START = '2026-08-30';
+const PLAN_YEAR_END = '2027-04-18';
+const MEAL_PLANS = [
+  { id: 'trad-a', group: 'Traditional', label: 'Traditional A', visible: 3522.50, weekly: 103.60 },
+  { id: 'trad-b', group: 'Traditional', label: 'Traditional B', visible: 3637.50, weekly: 106.99 },
+  { id: 'trad-c', group: 'Traditional', label: 'Traditional C', visible: 3752.50, weekly: 110.37 },
+  { id: 'trad-d', group: 'Traditional', label: 'Traditional D', visible: 3862.50, weekly: 113.60 },
+  { id: 'apt-a', group: 'Apartment', label: 'Apartment A', visible: 2177.50, weekly: 64.04 },
+  { id: 'apt-b', group: 'Apartment', label: 'Apartment B', visible: 2297.50, weekly: 67.57 },
+  { id: 'apt-c', group: 'Apartment', label: 'Apartment C', visible: 2417.50, weekly: 71.10 },
+  { id: 'apt-d', group: 'Apartment', label: 'Apartment D', visible: 2537.50, weekly: 74.63 },
+];
+const MEAL_PLAN_BY_ID = Object.fromEntries(MEAL_PLANS.map(p => [p.id, p]));
+function activeMealPlan() { return MEAL_PLAN_BY_ID[state.mealPlan] || null; }
+function planEffectiveTotal(p) { return p.visible * 2; }
+function planEffectiveDaily(p) { return (p.weekly / 7) * 2; }
+
+// The 34 week-ending dates from McMaster's official 2026-2027 Budget Planner.
+// At week index i the visible balance is (visible - (i+1) * weekly); before the
+// first date it's the full balance. We linearly interpolate between them so the
+// "recommended pace" reads the same number the official PDF shows on that week.
+const PLAN_WEEK_ENDINGS = [
+  '2026-08-30', '2026-09-06', '2026-09-13', '2026-09-20', '2026-09-27',
+  '2026-10-04', '2026-10-11', '2026-10-18', '2026-10-25',
+  '2026-11-01', '2026-11-08', '2026-11-15', '2026-11-22', '2026-11-29',
+  '2026-12-06', '2026-12-13', '2026-12-20', '2026-12-27',
+  '2027-01-03', '2027-01-10', '2027-01-17', '2027-01-24',
+  '2027-02-01', '2027-02-07', '2027-02-14', '2027-02-21',
+  '2027-03-01', '2027-03-07', '2027-03-14', '2027-03-21', '2027-03-28',
+  '2027-04-04', '2027-04-11', '2027-04-18',
+];
+const PLAN_WEEK_TS = PLAN_WEEK_ENDINGS.map(s => new Date(s + 'T00:00:00').getTime());
+
+function mcmasterVisibleRemaining(p, d) {
+  const bal = i => (i >= PLAN_WEEK_TS.length - 1 ? 0 : Math.max(0, p.visible - (i + 1) * p.weekly));
+  const t = d.getTime();
+  if (t <= PLAN_WEEK_TS[0] - 7 * 86400000) return p.visible;
+  if (t <= PLAN_WEEK_TS[0]) {
+    const startT = PLAN_WEEK_TS[0] - 7 * 86400000;
+    const f = (t - startT) / (PLAN_WEEK_TS[0] - startT);
+    return p.visible - f * (p.visible - bal(0));
+  }
+  for (let i = 1; i < PLAN_WEEK_TS.length; i++) {
+    if (t <= PLAN_WEEK_TS[i]) {
+      const f = (t - PLAN_WEEK_TS[i - 1]) / (PLAN_WEEK_TS[i] - PLAN_WEEK_TS[i - 1]);
+      return bal(i - 1) + f * (bal(i) - bal(i - 1));
+    }
+  }
+  return 0;
+}
+
 /* ---------- Fall 2026 sessional dates (used only if term dates match) ---------- */
 const DEFAULT_TERM_START = '2026-09-01';
 const DEFAULT_TERM_END = '2026-12-23';
 const CLASSES_START = new Date(2026, 8, 8);
 function specialFor(d, termStart, termEnd) {
-  if (termStart !== DEFAULT_TERM_START || termEnd !== DEFAULT_TERM_END) return null;
+  // Fall 2026 sessional dates apply for the default Fall term OR the whole-year plan window.
+  const yearMode = termStart === PLAN_YEAR_START && termEnd === PLAN_YEAR_END;
+  if (!yearMode && (termStart !== DEFAULT_TERM_START || termEnd !== DEFAULT_TERM_END)) return null;
   const k = d.toISOString().slice(0, 10);
   if (k === '2026-09-30') return { note: 'No classes today — National Day for Truth & Reconciliation.' };
   if (d >= new Date(2026, 9, 12) && d <= new Date(2026, 9, 18)) return { note: 'Fall Reading Week — no classes.' };
@@ -515,6 +591,7 @@ const USER_ID = getUserId();
 let state = {
   residence: 'pgcll', termBudget: 3522.50, termStart: DEFAULT_TERM_START, termEnd: DEFAULT_TERM_END,
   dietary: [], favoriteVenues: [], hiddenVenues: [], schedule: [], homeDays: [], venueChoices: {}, onboarded: false,
+  mealPlan: 'custom', budgetMode: 'term',
 };
 function setSyncStatus(mode) {
   const dot = document.getElementById('syncDot');
@@ -691,9 +768,9 @@ function renderStats() {
   const dates = termDates();
   const onCampus = dates.length - state.homeDays.length;
   document.getElementById('cmdStats').innerHTML = `
-    <div class="cmd-stat"><div class="n mono">$${state.termBudget.toFixed(2)}</div><div class="l">term budget</div></div>
+    <div class="cmd-stat"><div class="n mono">$${state.termBudget.toFixed(2)}</div><div class="l">${state.budgetMode === 'year' ? 'year budget' : 'term budget'}</div></div>
     <div class="cmd-stat"><div class="n mono">${onCampus}</div><div class="l">on-campus days</div></div>
-    <div class="cmd-stat"><div class="n mono">$${(state.termBudget / Math.max(1, onCampus)).toFixed(2)}</div><div class="l">target / day</div></div>
+    <div class="cmd-stat"><div class="n mono">$${(state.termBudget / Math.max(1, onCampus)).toFixed(2)}</div><div class="l">your target / day</div></div>
     <div class="cmd-stat"><div class="n mono">${state.homeDays.length}</div><div class="l">days marked home</div></div>
   `;
   document.getElementById('placeSub').textContent = `${BUILDINGS[state.residence] ? BUILDINGS[state.residence].name : 'McMaster'}`;
@@ -734,6 +811,12 @@ function renderConsole() {
   const meta = dayMetaForDate(state.schedule, d, state.termStart, state.termEnd);
   const isHome = state.homeDays.includes(key);
   const dateLabel = d.toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' });
+  const refPlan = activeMealPlan();
+  let mcmasterRefHtml = '';
+  if (refPlan) {
+    const vis = mcmasterVisibleRemaining(refPlan, d);
+    mcmasterRefHtml = `<div class="mcmaster-ref">${svgIcon('calendar')} McMaster's pace by this date: <b>$${vis.toFixed(2)}</b> visible / $${(vis * 2).toFixed(2)} real should be left</div>`;
+  }
   const el = document.getElementById('console');
   if (!meta.mealSlots.includes(activeMealKey)) activeMealKey = meta.mealSlots[0];
 
@@ -840,7 +923,10 @@ function renderConsole() {
   el.innerHTML = `
     <div class="panel">
       <div class="day-head">
-        <div class="day-date">${dateLabel}</div>
+        <div>
+          <div class="day-date">${dateLabel}</div>
+          ${mcmasterRefHtml}
+        </div>
         <button class="home-toggle ${isHome ? 'is-home' : ''}" id="homeToggleBtn">${svgIcon('house')} ${isHome ? 'Mark on-campus' : 'Mark home (skip this day)'}</button>
       </div>
       ${scheduleHtml}
@@ -1016,6 +1102,17 @@ function closeSettings() {
 function renderSettings(forced) {
   const panel = document.getElementById('settingsPanel');
   const residenceOpts = RESIDENCE_IDS.map(id => `<option value="${id}" ${state.residence === id ? 'selected' : ''}>${BUILDINGS[id].name}</option>`).join('');
+  const activePlan = activeMealPlan();
+  const planOpts = `<option value="custom"${state.mealPlan === 'custom' ? ' selected' : ''}>Custom amount</option>` +
+    ['Traditional', 'Apartment'].map(g =>
+      `<optgroup label="${g} full meal plans">` +
+      MEAL_PLANS.filter(p => p.group === g).map(p =>
+        `<option value="${p.id}"${state.mealPlan === p.id ? ' selected' : ''}>${p.label} &mdash; $${p.visible.toFixed(2)} visible</option>`
+      ).join('') + `</optgroup>`
+    ).join('');
+  const paceLine = activePlan
+    ? `<p class="pace-line"><b>${activePlan.label}</b>: $${planEffectiveTotal(activePlan).toFixed(2)}/yr total &mdash; $${activePlan.visible.toFixed(2)} visible balance + a matching 50% overhead bucket. McMaster's recommended pace is <b>$${planEffectiveDaily(activePlan).toFixed(2)}/day</b> of real spending ($${(activePlan.weekly / 7).toFixed(2)}/day off the visible balance); the visible balance is planned to hit $0 on Apr 18, 2027.</p>`
+    : '';
   const dietaryChips = DIETARY_OPTIONS.map(d => `<button class="chip${state.dietary.includes(d) ? ' active' : ''}" data-dietary="${d}">${DIETARY_LABEL[d]}</button>`).join('');
   const venueRows = Object.entries(VENUES).map(([id, v]) => {
     const isFav = state.favoriteVenues.includes(id), isHidden = state.hiddenVenues.includes(id);
@@ -1049,12 +1146,33 @@ function renderSettings(forced) {
     </div>
 
     <div class="field-group">
-      <h3>Term budget & dates</h3>
-      <div class="field-row"><label>Total food budget for the term</label><input type="number" step="0.01" id="budgetInput" value="${state.termBudget}"></div>
-      <div class="field-inline">
-        <div class="field-row"><label>Term start</label><input type="date" id="termStartInput" value="${state.termStart}"></div>
-        <div class="field-row"><label>Term end</label><input type="date" id="termEndInput" value="${state.termEnd}"></div>
+      <h3>Meal plan &amp; budget</h3>
+      <div class="field-row"><label>Your meal plan</label><select id="planSelect">${planOpts}</select></div>
+      <div class="field-row"><label>${activePlan ? 'Real spending power (set by your plan)' : 'Food budget — what you plan to actually spend'}</label><input type="number" step="0.01" id="budgetInput" value="${state.termBudget.toFixed(2)}"${activePlan ? ' readonly' : ''}></div>
+      <div class="field-row"><label>Budget window</label>
+        <div class="toggle-row" id="budgetModeToggle">
+          <button type="button" class="tgl${state.budgetMode === 'term' ? ' active' : ''}" data-mode="term">This term</button>
+          <button type="button" class="tgl${state.budgetMode === 'year' ? ' active' : ''}" data-mode="year">Whole year</button>
+        </div>
       </div>
+      <div class="field-inline">
+        <div class="field-row"><label>${state.budgetMode === 'year' ? 'Plan year start' : 'Term start'}</label><input type="date" id="termStartInput" value="${state.termStart}"${state.budgetMode === 'year' ? ' readonly' : ''}></div>
+        <div class="field-row"><label>${state.budgetMode === 'year' ? 'Plan year end' : 'Term end'}</label><input type="date" id="termEndInput" value="${state.termEnd}"${state.budgetMode === 'year' ? ' readonly' : ''}></div>
+      </div>
+      ${paceLine}
+      <details class="explainer">
+        <summary>How McMaster meal plans actually work</summary>
+        <div>
+          <p>Your plan costs about <b>$7,000 for the year</b>, split 50/50 into two buckets:</p>
+          <ul>
+            <li><b>Visible balance</b> &mdash; the number in MacExpress. That's the amount shown on the plans above ($3,522.50 for Traditional A).</li>
+            <li><b>Overhead match</b> &mdash; an equal hidden amount you never see directly.</li>
+          </ul>
+          <p>Every purchase pulls <b>half from each bucket</b>, so a $100 grocery run only costs $50 of visible balance. Your real spending power is <b>double</b> the visible number &mdash; about <b>$29.60/day</b> on Traditional A.</p>
+          <p><b>Traditional</b> plans are for dorm residents; <b>Apartment</b> plans (cheaper) are for units with a kitchen. The letter A&ndash;D just sets how much you start with.</p>
+          <p>McMaster's official planner assumes you spend the visible balance evenly from Aug 30 to Apr 18. That's the &ldquo;recommended pace&rdquo; shown under each day &mdash; your own projection below is based on the meals you actually pick and the days you mark home.</p>
+        </div>
+      </details>
     </div>
 
     <div class="field-group">
@@ -1094,6 +1212,30 @@ function renderSettings(forced) {
 
   if (!forced) document.getElementById('closeSettingsBtn').addEventListener('click', closeSettings);
   if (!forced) document.getElementById('cancelSettingsBtn').addEventListener('click', closeSettings);
+
+  document.getElementById('planSelect').addEventListener('change', (e) => {
+    // keep the number field in sync with what the user has typed before we re-render
+    if (!activeMealPlan()) state.termBudget = parseFloat(document.getElementById('budgetInput').value) || state.termBudget;
+    state.mealPlan = e.target.value;
+    const p = activeMealPlan();
+    if (p) state.termBudget = planEffectiveTotal(p);
+    renderSettings(forced);
+  });
+  document.querySelectorAll('#budgetModeToggle .tgl').forEach(btn => btn.addEventListener('click', () => {
+    const mode = btn.dataset.mode;
+    if (mode === state.budgetMode) return;
+    if (!activeMealPlan()) state.termBudget = parseFloat(document.getElementById('budgetInput').value) || state.termBudget;
+    state.budgetMode = mode;
+    if (mode === 'year') {
+      state.termStart = PLAN_YEAR_START;
+      state.termEnd = PLAN_YEAR_END;
+    } else if (state.termStart === PLAN_YEAR_START && state.termEnd === PLAN_YEAR_END) {
+      state.termStart = DEFAULT_TERM_START;
+      state.termEnd = DEFAULT_TERM_END;
+    }
+    renderSettings(forced);
+  }));
+
   document.querySelectorAll('[data-dietary]').forEach(chip => chip.addEventListener('click', () => {
     const d = chip.dataset.dietary;
     state.dietary = state.dietary.includes(d) ? state.dietary.filter(x => x !== d) : [...state.dietary, d];
@@ -1160,9 +1302,20 @@ function renderSettings(forced) {
   });
   document.getElementById('saveSettingsBtn').addEventListener('click', () => {
     state.residence = document.getElementById('residenceSelect').value;
-    state.termBudget = parseFloat(document.getElementById('budgetInput').value) || state.termBudget;
-    state.termStart = document.getElementById('termStartInput').value || state.termStart;
-    state.termEnd = document.getElementById('termEndInput').value || state.termEnd;
+    state.mealPlan = document.getElementById('planSelect').value;
+    const plan = activeMealPlan();
+    if (plan) {
+      state.termBudget = planEffectiveTotal(plan);
+    } else {
+      state.termBudget = parseFloat(document.getElementById('budgetInput').value) || state.termBudget;
+    }
+    if (state.budgetMode === 'year') {
+      state.termStart = PLAN_YEAR_START;
+      state.termEnd = PLAN_YEAR_END;
+    } else {
+      state.termStart = document.getElementById('termStartInput').value || state.termStart;
+      state.termEnd = document.getElementById('termEndInput').value || state.termEnd;
+    }
     state.onboarded = true;
     activeMonth = 0; selectedDate = null;
     document.getElementById('settingsOverlay').classList.add('hidden');
