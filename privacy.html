@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Privacy — Mac Meal Planner</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext y='19' font-size='20'%3E%F0%9F%8D%BD%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #150A0D; --surface: #1F1017; --border: #3A2029; --ink: #F3E9EC; --ink-muted: #C9A9B3; --ink-dim: #9A7883; --gold: #E5A93C; --fireball: #DD4B1F; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: 'Overpass', system-ui, sans-serif; line-height: 1.65; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 48px 20px 80px; }
+  a { color: var(--gold); }
+  .back { font-family: 'Overpass Mono', monospace; font-size: 13px; text-decoration: none; color: var(--ink-dim); }
+  .back:hover { color: var(--gold); }
+  h1 { font-size: 28px; font-weight: 800; letter-spacing: -.02em; margin: 22px 0 4px; }
+  .updated { font-family: 'Overpass Mono', monospace; font-size: 12px; color: var(--ink-dim); margin: 0 0 28px; }
+  h2 { font-size: 16px; font-weight: 700; margin: 28px 0 8px; }
+  p, li { font-size: 14.5px; color: var(--ink-muted); margin: 8px 0; }
+  li { margin: 5px 0; }
+  strong { color: var(--ink); font-weight: 600; }
+  .box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin: 14px 0; }
+  code { font-family: 'Overpass Mono', monospace; font-size: .88em; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--ink-dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p><a class="back" href="/">&larr; back to the planner</a></p>
+  <h1>Privacy</h1>
+  <p class="updated">Last updated 2026-08-29</p>
+
+  <p>Mac Meal Planner is an <strong>unofficial</strong>, student-built tool. It is not affiliated with, endorsed by, or connected to McMaster University or McMaster Hospitality Services. This page explains, plainly, what it does with your information.</p>
+
+  <h2>What it stores</h2>
+  <ul>
+    <li>Your planner setup: residence, food budget, meal plan, term dates, dietary preferences, your class schedule, your venue picks, and which days you mark as "home".</li>
+    <li>If you create an account: your email address and a securely hashed version of your password (the password itself is never stored).</li>
+  </ul>
+
+  <h2>Where it's stored</h2>
+  <p>On <strong>Cloudflare</strong> (a D1 database and a KV store), which runs on servers around the world. Nothing is stored on any McMaster system.</p>
+
+  <h2>How your data is protected</h2>
+  <div class="box">
+    <p style="margin-top:0"><strong>By default there is no login.</strong> Your data is tied to the private link in your address bar (the <code>?u=</code> part). Anyone who has that exact link can view and edit your planner &mdash; so don't share it, and be careful on shared or public computers.</p>
+    <p style="margin-bottom:0">Creating an account <strong>locks your planner to your login</strong>: after that, the link alone stops working and only someone signed in as you can open it.</p>
+  </div>
+
+  <h2>What it does <em>not</em> do</h2>
+  <ul>
+    <li>No advertising, no analytics, no tracking pixels, no third-party trackers.</li>
+    <li>Your data is never sold, rented, or shared with anyone.</li>
+    <li>The only cookie is an optional login-session cookie, set only if you create an account or log in.</li>
+    <li>Your class schedule and dietary preferences are used only to show you relevant meal options in your own browser.</li>
+  </ul>
+
+  <h2>Deleting your data</h2>
+  <p>Open <strong>Settings &rarr; Delete everything</strong> and confirm. This immediately and permanently removes your planner (and your account, if you have one) from the server. You can also request deletion by contacting the developer at the address below.</p>
+
+  <h2>Contact</h2>
+  <p>Daniel Edelstein &mdash; danieledel288 [at] gmail [dot] com</p>
+
+  <footer>
+    This tool is provided as-is for planning purposes only and is not financial advice. Meal-plan figures are derived from McMaster's published 2026&ndash;2027 Budget Planner; always check your real balance in MacExpress.
+  </footer>
+</div>
+</body>
+</html>

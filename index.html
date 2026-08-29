@@ -199,6 +199,12 @@
   .settings-intro { font-size: 13px; color: var(--ink-muted); margin: 4px 0 20px; max-width: 60ch; }
   .settings-disclaimer { font-size: 12px; color: var(--ink-muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; margin: -10px 0 20px; max-width: 60ch; }
   .settings-disclaimer b { color: var(--ink); }
+  .danger-zone { border-top: 1px solid var(--border); padding-top: 18px; }
+  .danger-zone h3 { color: var(--over); }
+  .danger-zone p { font-size: 12px; color: var(--ink-muted); margin: 0 0 10px; max-width: 52ch; }
+  .btn.danger-btn { background: transparent; border: 1px solid var(--over); color: var(--over); }
+  .btn.danger-btn.armed { background: var(--over); color: #fff; }
+  .btn.danger-btn:disabled { opacity: .6; }
   .field-group { margin-bottom: 22px; }
   .field-group h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gold); margin: 0 0 10px; }
   .field-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
@@ -308,7 +314,8 @@
   <footer class="sources">
     <p class="disclaimer"><b>Unofficial.</b> Not affiliated with, endorsed by, or connected to McMaster University or McMaster Hospitality Services. Built by a student. Meal-plan figures are derived from McMaster's published 2026&ndash;2027 Budget Planner &mdash; always check your real balance in MacExpress. This is a planning aid, not financial advice.</p>
     Building positions are real campus coordinates (OpenStreetMap); walking times are straight-line distance at ~75m/min, not routed paths &mdash; treat as close estimates. Sessional dates (reading week, exam period) shown only when your term dates match McMaster's official Fall 2026 calendar. Prices are from real McMaster Hospitality Services menus where confirmed live (Aug 2026); items marked * are estimated from standard chain pricing. Dietary tags are best-effort and only cover items I could confirm &mdash; check with the vendor for anything strict.<br>
-    Your setup is saved under a private link (the <span class="mono">?u=</span> in this URL) on Cloudflare, no login required &mdash; anyone with your link can view and edit your plan, so don't share it. An optional account lets you reach your data from another device.
+    Your setup is saved under a private link (the <span class="mono">?u=</span> in this URL) on Cloudflare, no login required &mdash; anyone with your link can view and edit your plan, so don't share it. An optional account lets you reach your data from another device.<br>
+    <a href="/privacy" style="color:var(--gold)">Privacy</a> &nbsp;&middot;&nbsp; Delete your data any time in Settings.
   </footer>
 </div>
 

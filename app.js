@@ -306,17 +306,33 @@ function setSyncStatus(mode) {
   dot.className = 'dot' + (mode === 'offline' ? ' offline' : mode === 'syncing' ? ' syncing' : '');
   label.textContent = mode === 'offline' ? 'Offline — saved on this device only' : mode === 'syncing' ? 'Syncing…' : 'Synced';
 }
+let LOCKED = false;
+
+// This planner belongs to an account and we don't have that session. Hide the
+// planner, wipe the local copy, and force the login screen.
+function showLocked() {
+  LOCKED = true;
+  try { localStorage.removeItem('mmp-state-' + USER_ID); } catch (e) {}
+  document.getElementById('mainWrap').style.display = 'none';
+  document.getElementById('settingsOverlay').classList.add('hidden');
+  authOverlay.classList.remove('hidden');
+  syncOverlayLock();
+  renderAuthForm('login', true);
+}
+
 async function loadState() {
   const localKey = 'mmp-state-' + USER_ID;
   try { const raw = localStorage.getItem(localKey); if (raw) state = { ...state, ...JSON.parse(raw) }; } catch (e) {}
   try {
     const res = await fetch(`/api/state?u=${USER_ID}`);
+    if (res.status === 401) { showLocked(); return; }
     if (res.ok) { const server = await res.json(); state = { ...state, ...server }; setSyncStatus('ok'); }
     else setSyncStatus('offline');
   } catch (e) { setSyncStatus('offline'); }
 }
 let saveTimer = null;
 function persist() {
+  if (LOCKED) return;
   try { localStorage.setItem('mmp-state-' + USER_ID, JSON.stringify(state)); } catch (e) {}
   renderAll();
   clearTimeout(saveTimer);
@@ -324,6 +340,7 @@ function persist() {
   saveTimer = setTimeout(async () => {
     try {
       const res = await fetch(`/api/state?u=${USER_ID}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) });
+      if (res.status === 401) { showLocked(); return; }
       setSyncStatus(res.ok ? 'ok' : 'offline');
     } catch (e) { setSyncStatus('offline'); }
   }, 400);
@@ -716,6 +733,7 @@ function mealRow(key, label, windowText) {
 document.getElementById('clearHomeBtn').addEventListener('click', () => { state.homeDays = []; persist(); });
 
 function renderAll() {
+  if (LOCKED) return;
   document.getElementById('mainWrap').style.display = state.onboarded ? '' : 'none';
   if (state.onboarded) { renderCalendar(); renderConsole(); }
 }
@@ -766,29 +784,34 @@ function renderAccountPanel() {
   document.getElementById('closeAuthBtn').addEventListener('click', closeAuth);
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
-    sessionUser = null;
-    renderAccountBtn();
-    closeAuth();
+    try {
+      localStorage.removeItem('mmp-state-' + USER_ID);
+      localStorage.removeItem('mmp-uid');
+    } catch (e) {}
+    // Drop ?u= and start fresh -- important on a shared computer.
+    window.location.href = window.location.pathname;
   });
 }
 
-function renderAuthForm(mode) {
+function renderAuthForm(mode, locked) {
   const isSignup = mode === 'signup';
   const looksEmpty = isSignup && !state.schedule.length && !Object.keys(state.venueChoices).length;
   authPanel.innerHTML = `
-    <div class="settings-head"><h2>${isSignup ? 'Create account' : 'Log in'}</h2><button class="close-btn" id="closeAuthBtn">${svgIcon('x')}</button></div>
-    <p class="settings-intro">${isSignup
-      ? "Save this planner to an account so you can log in and get back to it from any device."
-      : 'Log in to reach the planner tied to your account.'}</p>
+    <div class="settings-head"><h2>${isSignup ? 'Create account' : 'Log in'}</h2>${locked ? '' : `<button class="close-btn" id="closeAuthBtn">${svgIcon('x')}</button>`}</div>
+    <p class="settings-intro">${locked
+      ? "This planner is tied to an account. Log in to open it."
+      : isSignup
+        ? "Save this planner to an account so you can log in and get back to it from any device."
+        : 'Log in to reach the planner tied to your account.'}</p>
     ${looksEmpty ? `<div class="auth-error">This planner doesn't have a schedule or picks saved yet. If you already have a Mac Meal Planner link, open that one first — creating an account now will save THIS empty planner, not that one.</div>` : ''}
     <div id="authErr"></div>
     <div class="field-row"><label>Email</label><input type="email" id="authEmail" autocomplete="email"></div>
     <div class="field-row"><label>Password</label><input type="password" id="authPassword" autocomplete="${isSignup ? 'new-password' : 'current-password'}"></div>
     <button class="btn" id="authSubmitBtn" style="width:100%;margin-top:6px;">${isSignup ? 'Create account' : 'Log in'}</button>
-    <div class="auth-switch">${isSignup ? 'Already have an account?' : "Don't have an account?"} <button id="authSwitchBtn">${isSignup ? 'Log in' : 'Create one'}</button></div>
+    ${locked ? '' : `<div class="auth-switch">${isSignup ? 'Already have an account?' : "Don't have an account?"} <button id="authSwitchBtn">${isSignup ? 'Log in' : 'Create one'}</button></div>`}
   `;
-  document.getElementById('closeAuthBtn').addEventListener('click', closeAuth);
-  document.getElementById('authSwitchBtn').addEventListener('click', () => renderAuthForm(isSignup ? 'login' : 'signup'));
+  if (!locked) document.getElementById('closeAuthBtn').addEventListener('click', closeAuth);
+  if (!locked) document.getElementById('authSwitchBtn').addEventListener('click', () => renderAuthForm(isSignup ? 'login' : 'signup'));
   document.getElementById('authSubmitBtn').addEventListener('click', async () => {
     const email = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value;
@@ -801,6 +824,13 @@ function renderAuthForm(mode) {
       });
       if (!res.ok) { errEl.innerHTML = `<div class="auth-error">${esc(await res.text())}</div>`; return; }
       const data = await res.json();
+      if (locked) {
+        // We were blocked out of this planner; reload now that we have the session.
+        const url = new URL(window.location.href);
+        url.searchParams.set('u', data.uuid);
+        window.location.href = url.toString();
+        return;
+      }
       closeAuth();
       if (data.uuid !== USER_ID) {
         const url = new URL(window.location.href);
@@ -941,6 +971,13 @@ function renderSettings(forced) {
       <button class="btn secondary small" id="addRowBtn">${svgIcon('plus')} Add class</button>
     </div>
 
+    ${forced ? '' : `
+    <div class="field-group danger-zone">
+      <h3>Delete everything</h3>
+      <p>Permanently removes this planner${sessionUser ? ' and your account' : ''} from the server and this device. This can't be undone.</p>
+      <button class="btn danger-btn" id="deleteDataBtn">Delete my data</button>
+    </div>`}
+
     <div class="save-bar">
       ${forced ? '' : `<button class="btn secondary" id="cancelSettingsBtn">Cancel</button>`}
       <button class="btn" id="saveSettingsBtn">${forced ? 'Start planning' : 'Save'}</button>
@@ -1002,6 +1039,36 @@ function renderSettings(forced) {
     state.schedule.push({ day: 1, start: '09:30', end: '10:20', course: '', building: '' });
     renderSettings(forced);
   });
+
+  const delBtn = document.getElementById('deleteDataBtn');
+  if (delBtn) {
+    let armed = false, armTimer = null;
+    delBtn.addEventListener('click', async () => {
+      if (!armed) {
+        armed = true;
+        delBtn.textContent = 'Click again to permanently delete';
+        delBtn.classList.add('armed');
+        armTimer = setTimeout(() => {
+          armed = false;
+          delBtn.textContent = 'Delete my data';
+          delBtn.classList.remove('armed');
+        }, 4000);
+        return;
+      }
+      clearTimeout(armTimer);
+      delBtn.disabled = true;
+      delBtn.textContent = 'Deleting…';
+      try {
+        await fetch(`/api/state?u=${USER_ID}`, { method: 'DELETE' });
+      } catch (e) { /* fall through -- still clear local + reload */ }
+      try {
+        localStorage.removeItem('mmp-state-' + USER_ID);
+        localStorage.removeItem('mmp-uid');
+      } catch (e) {}
+      window.location.href = window.location.pathname;
+    });
+  }
+
   document.getElementById('uploadZone').addEventListener('click', () => document.getElementById('pdfInput').click());
   document.getElementById('pdfInput').addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -1385,6 +1452,7 @@ checkSession().then(user => {
     return;
   }
   loadState().then(() => {
+    if (LOCKED) return;
     if (!state.onboarded) { openSettings(true); }
     renderAll();
   });
