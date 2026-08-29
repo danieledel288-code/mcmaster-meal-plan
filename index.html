@@ -52,6 +52,10 @@
   .gear-btn { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: #fff; border-radius: 9px; padding: 8px 12px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
   .gear-btn:hover { background: rgba(255,255,255,0.2); }
 
+  .term-switch { display: inline-flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 3px; margin: 4px 0 14px; }
+  .term-switch button { background: none; border: none; color: var(--ink-muted); font-weight: 700; font-size: 12.5px; padding: 6px 16px; border-radius: 6px; }
+  .term-switch button.active { background: var(--fireball); color: #fff; }
+  .cmd-stat .l .sub { display: block; font-size: 10.5px; color: var(--ink-dim); margin-top: 1px; }
   .cmd-stats { display: grid; grid-template-columns: repeat(4, auto); column-gap: 22px; row-gap: 12px; }
   .cmd-stat { padding-right: 22px; border-right: 1px solid rgba(255,255,255,0.2); }
   .cmd-stat:nth-child(4n) { border-right: none; padding-right: 0; }
@@ -291,6 +295,7 @@
         <button class="gear-btn" id="openSettingsBtn"></button>
       </div>
     </div>
+    <div class="term-switch" id="termSwitch"></div>
     <div class="cmd-stats" id="cmdStats"></div>
   </div>
 </header>

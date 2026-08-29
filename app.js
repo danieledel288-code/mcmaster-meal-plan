@@ -163,6 +163,17 @@ function activeMealPlan() { return MEAL_PLAN_BY_ID[state.mealPlan] || null; }
 function planEffectiveTotal(p) { return p.visible * 2; }
 function planEffectiveDaily(p) { return (p.weekly / 7) * 2; }
 
+// The meal plan runs the whole year; one semester is half of it.
+//   effective = the full 50/50 spending power   (what you can buy)
+//   visible   = the MacExpress balance going down (half of effective)
+// For a custom budget, state.termBudget is the year figure -> half per semester,
+// and there's no separate "visible" number.
+function semesterEffective() {
+  const p = activeMealPlan();
+  return p ? p.visible : state.termBudget / 2;   // named plan: year-effective/2 = visible; custom: half the year figure
+}
+function semesterVisible() { const p = activeMealPlan(); return p ? p.visible / 2 : null; }
+
 // The 34 week-ending dates from McMaster's official 2026-2027 Budget Planner.
 // At week index i the visible balance is (visible - (i+1) * weekly); before the
 // first date it's the full balance. We linearly interpolate between them so the
@@ -198,19 +209,44 @@ function mcmasterVisibleRemaining(p, d) {
   return 0;
 }
 
-/* ---------- Fall 2026 sessional dates (used only if term dates match) ---------- */
-const DEFAULT_TERM_START = '2026-09-01';
-const DEFAULT_TERM_END = '2026-12-23';
-const CLASSES_START = new Date(2026, 8, 8);
-function specialFor(d, termStart, termEnd) {
-  // Fall 2026 sessional dates apply for the default Fall term OR the whole-year plan window.
-  const yearMode = termStart === PLAN_YEAR_START && termEnd === PLAN_YEAR_END;
-  if (!yearMode && (termStart !== DEFAULT_TERM_START || termEnd !== DEFAULT_TERM_END)) return null;
-  const k = d.toISOString().slice(0, 10);
-  if (k === '2026-09-30') return { note: 'No classes today — National Day for Truth & Reconciliation.' };
-  if (d >= new Date(2026, 9, 12) && d <= new Date(2026, 9, 18)) return { note: 'Fall Reading Week — no classes.' };
-  if (d >= new Date(2026, 11, 11) && d <= new Date(2026, 11, 23)) return { note: 'Final exams — no fixed lecture schedule.' };
-  if (d < CLASSES_START) return { note: 'Before classes start (move-in week).' };
+/* ---------- Terms (Fall 2026 + Winter 2027) ---------- */
+const TERMS = {
+  fall:   { key: 'fall',   label: 'Fall',   defStart: '2026-09-01', defEnd: '2026-12-23', classesStart: new Date(2026, 8, 8) },
+  winter: { key: 'winter', label: 'Winter', defStart: '2027-01-05', defEnd: '2027-04-30', classesStart: new Date(2027, 0, 5) },
+};
+const DEFAULT_TERM_START = TERMS.fall.defStart;
+const DEFAULT_TERM_END = TERMS.fall.defEnd;
+
+function activeTermKey() { return state.viewTerm === 'winter' ? 'winter' : 'fall'; }
+function activeTerm() { return TERMS[activeTermKey()]; }
+function termStartOf(key) { return key === 'winter' ? state.winterStart : state.termStart; }
+function termEndOf(key) { return key === 'winter' ? state.winterEnd : state.termEnd; }
+function scheduleOf(key) { return key === 'winter' ? state.scheduleWinter : state.schedule; }
+function activeTermStart() { return termStartOf(activeTermKey()); }
+function activeTermEnd() { return termEndOf(activeTermKey()); }
+function activeSchedule() { return scheduleOf(activeTermKey()); }
+function setActiveSchedule(list) {
+  if (activeTermKey() === 'winter') state.scheduleWinter = list; else state.schedule = list;
+}
+
+// Sessional-date banners, applied per term only while that term's dates are the
+// McMaster defaults (custom dates turn them off).
+function specialFor(d) {
+  const k = isoDate(d);
+  if (state.termStart === TERMS.fall.defStart && state.termEnd === TERMS.fall.defEnd
+      && d >= new Date(2026, 7, 1) && d <= new Date(2026, 11, 31)) {
+    if (k === '2026-09-30') return { note: 'No classes today — National Day for Truth & Reconciliation.' };
+    if (d >= new Date(2026, 9, 12) && d <= new Date(2026, 9, 18)) return { note: 'Fall Reading Week — no classes.' };
+    if (d >= new Date(2026, 11, 11) && d <= new Date(2026, 11, 23)) return { note: 'Final exams — no fixed lecture schedule.' };
+    if (d < TERMS.fall.classesStart) return { note: 'Before classes start (move-in week).' };
+  }
+  if (state.winterStart === TERMS.winter.defStart && state.winterEnd === TERMS.winter.defEnd
+      && d >= new Date(2027, 0, 1) && d <= new Date(2027, 4, 31)) {
+    if (k === '2027-02-15') return { note: 'Family Day — university closed.' };
+    if (d >= new Date(2027, 1, 15) && d <= new Date(2027, 1, 21)) return { note: 'Winter Reading Week — no classes.' };
+    if (d >= new Date(2027, 3, 7) && d <= new Date(2027, 3, 30)) return { note: 'Final exams — no fixed lecture schedule.' };
+    if (d < TERMS.winter.classesStart) return { note: 'Before classes start (winter break).' };
+  }
   return null;
 }
 
@@ -250,9 +286,9 @@ function dayMeta(schedule, dow) {
   }
   return { classes, mealSlots, lunch };
 }
-function dayMetaForDate(schedule, d, termStart, termEnd) {
-  const isSpecial = !!specialFor(d, termStart, termEnd);
-  return dayMeta(isSpecial ? [] : schedule, d.getDay());
+function dayMetaForDate(d) {
+  const isSpecial = !!specialFor(d);
+  return dayMeta(isSpecial ? [] : activeSchedule(), d.getDay());
 }
 
 /* ---------- Candidate venue engine ---------- */
@@ -296,9 +332,14 @@ const USER_ID = getUserId();
 
 /* ---------- State ---------- */
 let state = {
-  residence: 'pgcll', termBudget: 3522.50, termStart: DEFAULT_TERM_START, termEnd: DEFAULT_TERM_END,
-  dietary: [], favoriteVenues: [], hiddenVenues: [], schedule: [], homeDays: [], venueChoices: {}, onboarded: false,
-  mealPlan: 'custom', budgetMode: 'term',
+  residence: 'pgcll', termBudget: 3522.50,
+  termStart: TERMS.fall.defStart, termEnd: TERMS.fall.defEnd,
+  winterStart: TERMS.winter.defStart, winterEnd: TERMS.winter.defEnd,
+  viewTerm: 'fall',
+  dietary: [], favoriteVenues: [], hiddenVenues: [],
+  schedule: [], scheduleWinter: [],
+  homeDays: [], venueChoices: {}, onboarded: false,
+  mealPlan: 'custom',
 };
 function setSyncStatus(mode) {
   const dot = document.getElementById('syncDot');
@@ -349,8 +390,8 @@ function persist() {
 /* ---------- Term calendar ---------- */
 function isoDate(d) { return d.toISOString().slice(0, 10); }
 function termDates() {
-  const start = new Date(state.termStart + 'T00:00:00');
-  const end = new Date(state.termEnd + 'T00:00:00');
+  const start = new Date(activeTermStart() + 'T00:00:00');
+  const end = new Date(activeTermEnd() + 'T00:00:00');
   const arr = [];
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) arr.push(new Date(d));
   return arr;
@@ -434,8 +475,8 @@ let selectedDate = null;
 let activeMealKey = 'breakfast';
 let selectedClassIdx = null;
 function monthsInTerm() {
-  const start = new Date(state.termStart + 'T00:00:00');
-  const end = new Date(state.termEnd + 'T00:00:00');
+  const start = new Date(activeTermStart() + 'T00:00:00');
+  const end = new Date(activeTermEnd() + 'T00:00:00');
   const list = [];
   let cur = new Date(start.getFullYear(), start.getMonth(), 1);
   while (cur <= end) {
@@ -447,7 +488,7 @@ function monthsInTerm() {
 
 function renderCalendar() {
   const months = monthsInTerm();
-  if (!selectedDate) selectedDate = new Date(state.termStart + 'T00:00:00');
+  if (!selectedDate) selectedDate = new Date(activeTermStart() + 'T00:00:00');
   const monthTabsEl = document.getElementById('monthTabs');
   monthTabsEl.innerHTML = '';
   months.forEach((mo, i) => {
@@ -462,7 +503,7 @@ function renderCalendar() {
   const calGridEl = document.getElementById('calGrid');
   calGridEl.innerHTML = '';
   if (!mo) { renderStats(); return; }
-  const termStart = new Date(state.termStart + 'T00:00:00'), termEnd = new Date(state.termEnd + 'T00:00:00');
+  const termStart = new Date(activeTermStart() + 'T00:00:00'), termEnd = new Date(activeTermEnd() + 'T00:00:00');
   const first = new Date(mo.y, mo.m, 1);
   const startOffset = first.getDay();
   const daysInMonth = new Date(mo.y, mo.m + 1, 0).getDate();
@@ -476,7 +517,7 @@ function renderCalendar() {
     const cell = document.createElement('div');
     cell.className = 'cal-cell';
     if (!inRange) cell.classList.add('disabled');
-    const special = specialFor(d, state.termStart, state.termEnd);
+    const special = specialFor(d);
     const isHome = state.homeDays.includes(key);
     if (special) cell.classList.add('special');
     if (isHome) cell.classList.add('home');
@@ -491,20 +532,30 @@ function renderCalendar() {
 }
 
 function renderStats() {
+  renderTermSwitch();
   const dates = termDates();
-  const onCampus = dates.length - state.homeDays.length;
+  const tStart = new Date(activeTermStart() + 'T00:00:00'), tEnd = new Date(activeTermEnd() + 'T00:00:00');
+  const homeInTerm = state.homeDays.filter(k => {
+    const d = new Date(k + 'T00:00:00');
+    return d >= tStart && d <= tEnd;
+  }).length;
+  const onCampus = Math.max(1, dates.length - homeInTerm);
+  const semEff = semesterEffective();
+  const semVis = semesterVisible();
+  const perDay = semEff / onCampus;
+  const tLabel = activeTerm().label;
   document.getElementById('cmdStats').innerHTML = `
-    <div class="cmd-stat"><div class="n mono">$${state.termBudget.toFixed(2)}</div><div class="l">${state.budgetMode === 'year' ? 'year budget' : 'term budget'}</div></div>
+    <div class="cmd-stat"><div class="n mono">$${semEff.toFixed(2)}</div><div class="l">to spend &middot; ${tLabel}${semVis != null ? `<span class="sub">$${semVis.toFixed(2)} off visible balance</span>` : ''}</div></div>
     <div class="cmd-stat"><div class="n mono">${onCampus}</div><div class="l">on-campus days</div></div>
-    <div class="cmd-stat"><div class="n mono">$${(state.termBudget / Math.max(1, onCampus)).toFixed(2)}</div><div class="l">your target / day</div></div>
-    <div class="cmd-stat"><div class="n mono">${state.homeDays.length}</div><div class="l">days marked home</div></div>
+    <div class="cmd-stat"><div class="n mono">$${perDay.toFixed(2)}</div><div class="l">your target / day${semVis != null ? `<span class="sub">$${(perDay / 2).toFixed(2)} off visible</span>` : ''}</div></div>
+    <div class="cmd-stat"><div class="n mono">${homeInTerm}</div><div class="l">days marked home</div></div>
   `;
   document.getElementById('placeSub').textContent = `${BUILDINGS[state.residence] ? BUILDINGS[state.residence].name : 'McMaster'}`;
 
   let plannedTotal = 0;
   dates.forEach(d => {
     if (state.homeDays.includes(isoDate(d))) return;
-    const meta = dayMetaForDate(state.schedule, d, state.termStart, state.termEnd);
+    const meta = dayMetaForDate(d);
     meta.mealSlots.forEach(mk => {
       const anchor = anchorForMeal(meta, mk);
       const opts = candidateOptions(anchor.building, state.dietary, state.favoriteVenues, state.hiddenVenues);
@@ -515,11 +566,28 @@ function renderStats() {
       plannedTotal += pick.item.price;
     });
   });
-  const diff = state.termBudget - plannedTotal;
+  const semBudget = semesterEffective();
+  const diff = semBudget - plannedTotal;
   const note = document.getElementById('termBufferNote');
+  const lbl = activeTerm().label;
   note.innerHTML = diff >= 0
-    ? `Following your current picks every on-campus day, you'd spend <b>$${plannedTotal.toFixed(2)}</b> of your $${state.termBudget.toFixed(2)} — banking <b>$${diff.toFixed(2)}</b> of buffer.`
-    : `Following your current picks every on-campus day, you'd spend <b>$${plannedTotal.toFixed(2)}</b> of your $${state.termBudget.toFixed(2)} — that's <b class="over">$${Math.abs(diff).toFixed(2)} over</b>.`;
+    ? `Following your current picks every on-campus day, you'd spend <b>$${plannedTotal.toFixed(2)}</b> of your $${semBudget.toFixed(2)} for ${lbl} — banking <b>$${diff.toFixed(2)}</b> of buffer.`
+    : `Following your current picks every on-campus day, you'd spend <b>$${plannedTotal.toFixed(2)}</b> of your $${semBudget.toFixed(2)} for ${lbl} — that's <b class="over">$${Math.abs(diff).toFixed(2)} over</b>.`;
+}
+
+function renderTermSwitch() {
+  const el = document.getElementById('termSwitch');
+  if (!el) return;
+  el.innerHTML = ['fall', 'winter'].map(k =>
+    `<button data-term="${k}" class="${activeTermKey() === k ? 'active' : ''}">${TERMS[k].label} ${k === 'fall' ? '2026' : '2027'}</button>`
+  ).join('');
+  el.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.term === activeTermKey()) return;
+    state.viewTerm = b.dataset.term;
+    activeMonth = 0;
+    selectedDate = new Date(activeTermStart() + 'T00:00:00');
+    persist();
+  }));
 }
 
 function anchorForMeal(meta, mealKey) {
@@ -547,8 +615,8 @@ function renderConsole() {
   const d = selectedDate;
   const key = isoDate(d);
   const wk = d.getDay();
-  const special = specialFor(d, state.termStart, state.termEnd);
-  const meta = dayMetaForDate(state.schedule, d, state.termStart, state.termEnd);
+  const special = specialFor(d);
+  const meta = dayMetaForDate(d);
   const isHome = state.homeDays.includes(key);
   const dateLabel = d.toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' });
   const refPlan = activeMealPlan();
@@ -795,7 +863,7 @@ function renderAccountPanel() {
 
 function renderAuthForm(mode, locked) {
   const isSignup = mode === 'signup';
-  const looksEmpty = isSignup && !state.schedule.length && !Object.keys(state.venueChoices).length;
+  const looksEmpty = isSignup && !state.schedule.length && !state.scheduleWinter.length && !Object.keys(state.venueChoices).length;
   authPanel.innerHTML = `
     <div class="settings-head"><h2>${isSignup ? 'Create account' : 'Log in'}</h2>${locked ? '' : `<button class="close-btn" id="closeAuthBtn">${svgIcon('x')}</button>`}</div>
     <p class="settings-intro">${locked
@@ -877,7 +945,7 @@ function renderSettings(forced) {
       ).join('') + `</optgroup>`
     ).join('');
   const paceLine = activePlan
-    ? `<p class="pace-line"><b>${activePlan.label}</b>: $${planEffectiveTotal(activePlan).toFixed(2)}/yr total &mdash; $${activePlan.visible.toFixed(2)} visible balance + a matching 50% overhead bucket. McMaster's recommended pace is <b>$${planEffectiveDaily(activePlan).toFixed(2)}/day</b> of real spending ($${(activePlan.weekly / 7).toFixed(2)}/day off the visible balance); the visible balance is planned to hit $0 on Apr 18, 2027.</p>`
+    ? `<p class="pace-line"><b>${activePlan.label}</b> &mdash; $${activePlan.visible.toFixed(2)} visible balance for the year + a matching 50% overhead bucket, so <b>$${planEffectiveTotal(activePlan).toFixed(2)}</b> of real spending power. Per semester that's <b>$${(activePlan.visible / 2).toFixed(2)} visible / $${activePlan.visible.toFixed(2)} real</b>. McMaster's recommended pace: about $${planEffectiveDaily(activePlan).toFixed(2)}/day real ($${(activePlan.weekly / 7).toFixed(2)}/day off visible).</p>`
     : '';
   const dietaryChips = DIETARY_OPTIONS.map(d => `<button class="chip${state.dietary.includes(d) ? ' active' : ''}" data-dietary="${d}">${DIETARY_LABEL[d]}</button>`).join('');
   const venueRows = Object.entries(VENUES).map(([id, v]) => {
@@ -892,7 +960,7 @@ function renderSettings(forced) {
   }).join('');
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const buildingOpts = Object.entries(BUILDINGS).map(([id, b]) => `<option value="${id}">${b.short}</option>`).join('');
-  const schedRows = state.schedule.map((c, i) => `
+  const schedRows = activeSchedule().map((c, i) => `
     <tr>
       <td><select data-sf="day" data-i="${i}">${dayNames.map((n, di) => `<option value="${di}" ${c.day === di ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
       <td><input type="time" data-sf="start" data-i="${i}" value="${esc(c.start)}"></td>
@@ -915,29 +983,28 @@ function renderSettings(forced) {
     <div class="field-group">
       <h3>Meal plan &amp; budget</h3>
       <div class="field-row"><label>Your meal plan</label><select id="planSelect">${planOpts}</select></div>
-      <div class="field-row"><label>${activePlan ? 'Real spending power (set by your plan)' : 'Food budget — what you plan to actually spend'}</label><input type="number" step="0.01" id="budgetInput" value="${state.termBudget.toFixed(2)}"${activePlan ? ' readonly' : ''}></div>
-      <div class="field-row"><label>Budget window</label>
-        <div class="toggle-row" id="budgetModeToggle">
-          <button type="button" class="tgl${state.budgetMode === 'term' ? ' active' : ''}" data-mode="term">This term</button>
-          <button type="button" class="tgl${state.budgetMode === 'year' ? ' active' : ''}" data-mode="year">Whole year</button>
-        </div>
+      <div class="field-row"><label>${activePlan ? 'Real spending power &mdash; whole year (set by your plan)' : 'Food budget for the whole year &mdash; what you plan to actually spend'}</label><input type="number" step="0.01" id="budgetInput" value="${state.termBudget.toFixed(2)}"${activePlan ? ' readonly' : ''}></div>
+      ${paceLine}
+      <div class="field-inline">
+        <div class="field-row"><label>Fall term start</label><input type="date" id="fallStartInput" value="${state.termStart}"></div>
+        <div class="field-row"><label>Fall term end</label><input type="date" id="fallEndInput" value="${state.termEnd}"></div>
       </div>
       <div class="field-inline">
-        <div class="field-row"><label>${state.budgetMode === 'year' ? 'Plan year start' : 'Term start'}</label><input type="date" id="termStartInput" value="${state.termStart}"${state.budgetMode === 'year' ? ' readonly' : ''}></div>
-        <div class="field-row"><label>${state.budgetMode === 'year' ? 'Plan year end' : 'Term end'}</label><input type="date" id="termEndInput" value="${state.termEnd}"${state.budgetMode === 'year' ? ' readonly' : ''}></div>
+        <div class="field-row"><label>Winter term start</label><input type="date" id="winterStartInput" value="${state.winterStart}"></div>
+        <div class="field-row"><label>Winter term end</label><input type="date" id="winterEndInput" value="${state.winterEnd}"></div>
       </div>
-      ${paceLine}
       <details class="explainer">
         <summary>How McMaster meal plans actually work</summary>
         <div>
-          <p>Your plan costs about <b>$7,000 for the year</b>, split 50/50 into two buckets:</p>
+          <p>Every McMaster meal plan is <b>one balance for the whole year</b> (roughly $7,000), split 50/50 into two buckets:</p>
           <ul>
-            <li><b>Visible balance</b> &mdash; the number in MacExpress. That's the amount shown on the plans above ($3,522.50 for Traditional A).</li>
+            <li><b>Visible balance</b> &mdash; the number in MacExpress. Traditional A starts at $3,522.50.</li>
             <li><b>Overhead match</b> &mdash; an equal hidden amount you never see directly.</li>
           </ul>
-          <p>Every purchase pulls <b>half from each bucket</b>, so a $100 grocery run only costs $50 of visible balance. Your real spending power is <b>double</b> the visible number &mdash; about <b>$29.60/day</b> on Traditional A.</p>
-          <p><b>Traditional</b> plans are for dorm residents; <b>Apartment</b> plans (cheaper) are for units with a kitchen. The letter A&ndash;D just sets how much you start with.</p>
-          <p>McMaster's official planner assumes you spend the visible balance evenly from Aug 30 to Apr 18. That's the &ldquo;recommended pace&rdquo; shown under each day &mdash; your own projection below is based on the meals you actually pick and the days you mark home.</p>
+          <p>Every purchase pulls <b>half from each bucket</b>, so $100 of food only costs $50 of visible balance. Your real spending power is <b>double</b> the visible number.</p>
+          <p>Split over two semesters, Traditional A is about <b>$1,761 visible / $3,522 real per term</b> &mdash; roughly <b>$15/day off your visible balance, $30/day of real spending</b>.</p>
+          <p><b>Traditional</b> plans are for dorm residents; <b>Apartment</b> plans (cheaper) are for units with a kitchen. The letter A&ndash;D sets the starting amount.</p>
+          <p>The gold "weekly checkpoint" markers show McMaster's own recommended pace; your projection is based on the meals you actually pick and the days you mark home.</p>
         </div>
       </details>
     </div>
@@ -953,8 +1020,12 @@ function renderSettings(forced) {
     </div>
 
     <div class="field-group">
-      <h3>Class schedule</h3>
-      <div class="upload-zone" id="uploadZone">${svgIcon('uploadCloud')}<div>Upload your McMaster timetable PDF</div><div style="font-size:11px;margin-top:2px;">Best-effort parse — review the table below before saving</div></div>
+      <h3>${activeTerm().label} class schedule</h3>
+      <div class="term-switch" id="settingsTermSwitch" style="margin-bottom:12px;">
+        <button data-term="fall" class="${activeTermKey() === 'fall' ? 'active' : ''}">Fall 2026</button>
+        <button data-term="winter" class="${activeTermKey() === 'winter' ? 'active' : ''}">Winter 2027</button>
+      </div>
+      <div class="upload-zone" id="uploadZone">${svgIcon('uploadCloud')}<div>Upload your ${activeTerm().label} timetable PDF</div><div style="font-size:11px;margin-top:2px;">Best-effort parse — review the table below before saving</div></div>
       <input type="file" accept="application/pdf" id="pdfInput" style="display:none">
       <p class="parse-note" id="parseNote"></p>
       <div class="field-row">
@@ -995,18 +1066,11 @@ function renderSettings(forced) {
     if (p) state.termBudget = planEffectiveTotal(p);
     renderSettings(forced);
   });
-  document.querySelectorAll('#budgetModeToggle .tgl').forEach(btn => btn.addEventListener('click', () => {
-    const mode = btn.dataset.mode;
-    if (mode === state.budgetMode) return;
-    if (!activeMealPlan()) state.termBudget = parseFloat(document.getElementById('budgetInput').value) || state.termBudget;
-    state.budgetMode = mode;
-    if (mode === 'year') {
-      state.termStart = PLAN_YEAR_START;
-      state.termEnd = PLAN_YEAR_END;
-    } else if (state.termStart === PLAN_YEAR_START && state.termEnd === PLAN_YEAR_END) {
-      state.termStart = DEFAULT_TERM_START;
-      state.termEnd = DEFAULT_TERM_END;
-    }
+  document.querySelectorAll('#settingsTermSwitch button').forEach(btn => btn.addEventListener('click', () => {
+    if (btn.dataset.term === activeTermKey()) return;
+    // stash any typed date edits for the term we're leaving
+    saveTermDateInputs();
+    state.viewTerm = btn.dataset.term;
     renderSettings(forced);
   }));
 
@@ -1029,14 +1093,14 @@ function renderSettings(forced) {
   }));
   document.querySelectorAll('[data-sf]').forEach(inp => inp.addEventListener('change', () => {
     const i = parseInt(inp.dataset.i, 10), f = inp.dataset.sf;
-    state.schedule[i][f] = f === 'day' ? parseInt(inp.value, 10) : inp.value;
+    activeSchedule()[i][f] = f === 'day' ? parseInt(inp.value, 10) : inp.value;
   }));
   document.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', () => {
-    state.schedule.splice(parseInt(btn.dataset.del, 10), 1);
+    activeSchedule().splice(parseInt(btn.dataset.del, 10), 1);
     renderSettings(forced);
   }));
   document.getElementById('addRowBtn').addEventListener('click', () => {
-    state.schedule.push({ day: 1, start: '09:30', end: '10:20', course: '', building: '' });
+    activeSchedule().push({ day: 1, start: '09:30', end: '10:20', course: '', building: '' });
     renderSettings(forced);
   });
 
@@ -1082,7 +1146,7 @@ function renderSettings(forced) {
         note.textContent = "Couldn't find any class blocks in that PDF — McMaster's PDF layout is irregular. Your existing schedule below is untouched; try the paste-text option above instead, or add classes manually.";
         return;
       }
-      state.schedule = found;
+      setActiveSchedule(found);
       const msg = `Found ${found.length} class block${found.length === 1 ? '' : 's'} — check every row below, McMaster's PDF layout is irregular and this is a best-effort read.${missingLocNote(found)}`;
       renderSettings(forced);
       document.getElementById('parseNote').textContent = msg;
@@ -1099,7 +1163,7 @@ function renderSettings(forced) {
       note.textContent = "Couldn't find any class blocks in that text — make sure you copied the full \"Class Schedule\" list, or add classes manually below.";
       return;
     }
-    state.schedule = found;
+    setActiveSchedule(found);
     const msg = `Found ${found.length} class block${found.length === 1 ? '' : 's'} from pasted text — check every row below before saving.${missingLocNote(found)}`;
     renderSettings(forced);
     document.getElementById('parseNote').textContent = msg;
@@ -1113,18 +1177,20 @@ function renderSettings(forced) {
     } else {
       state.termBudget = parseFloat(document.getElementById('budgetInput').value) || state.termBudget;
     }
-    if (state.budgetMode === 'year') {
-      state.termStart = PLAN_YEAR_START;
-      state.termEnd = PLAN_YEAR_END;
-    } else {
-      state.termStart = document.getElementById('termStartInput').value || state.termStart;
-      state.termEnd = document.getElementById('termEndInput').value || state.termEnd;
-    }
+    saveTermDateInputs();
     state.onboarded = true;
     activeMonth = 0; selectedDate = null;
     document.getElementById('settingsOverlay').classList.add('hidden');
     persist();
   });
+}
+
+function saveTermDateInputs() {
+  const g = id => (document.getElementById(id) || {}).value;
+  state.termStart = g('fallStartInput') || state.termStart;
+  state.termEnd = g('fallEndInput') || state.termEnd;
+  state.winterStart = g('winterStartInput') || state.winterStart;
+  state.winterEnd = g('winterEndInput') || state.winterEnd;
 }
 
 /* ---------- PDF parsing (best-effort, two strategies) ---------- */
