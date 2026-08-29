@@ -623,12 +623,12 @@ function renderConsole() {
   let mcmasterRefHtml = '';
   if (refPlan) {
     const vis = mcmasterVisibleRemaining(refPlan, d);
-    const isMilestone = PLAN_WEEK_END_SET.has(key);
-    mcmasterRefHtml = isMilestone
-      ? `<div class="mcmaster-ref milestone">${svgIcon('calendar')} <b>Weekly checkpoint</b> &mdash; McMaster's plan says <b>$${vis.toFixed(2)}</b> visible ($${(vis * 2).toFixed(2)} real spending power) should be left by ${d.toLocaleDateString('en-CA', { month: 'long', day: 'numeric' })}.</div>`
-      : `<div class="mcmaster-ref">${svgIcon('calendar')} McMaster's pace by this date: <b>$${vis.toFixed(2)}</b> visible / $${(vis * 2).toFixed(2)} real should be left</div>`;
+    const dLabel = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+    mcmasterRefHtml = PLAN_WEEK_END_SET.has(key)
+      ? `<div class="mcmaster-ref milestone">${svgIcon('calendar')}<span><b>Weekly checkpoint &middot; ${dLabel}</b><br>McMaster's plan: <b>$${vis.toFixed(2)}</b> left on your visible balance (<b>$${(vis * 2).toFixed(2)}</b> of real spending power).</span></div>`
+      : `<div class="mcmaster-ref">${svgIcon('calendar')}<span>McMaster's pace by ${dLabel}: <b>$${vis.toFixed(2)}</b> visible left &middot; <b>$${(vis * 2).toFixed(2)}</b> real.</span></div>`;
   } else {
-    mcmasterRefHtml = `<div class="mcmaster-ref muted">${svgIcon('calendar')} Pick your meal plan in Settings to see McMaster's recommended balance for each week.</div>`;
+    mcmasterRefHtml = `<div class="mcmaster-ref muted">${svgIcon('calendar')}<span>Pick your meal plan in Settings to see McMaster's recommended balance for each week.</span></div>`;
   }
   const el = document.getElementById('console');
   if (!meta.mealSlots.includes(activeMealKey)) activeMealKey = meta.mealSlots[0];
@@ -702,10 +702,14 @@ function renderConsole() {
       return `<button class="option-row${i === curIdx ? ' selected' : ''}" data-venue="${o.venue}">
         <div class="opt-icon">${svgIcon(v.icon)}</div>
         <div class="opt-mid">
-          <div class="venue">${o.isFavorite ? svgIcon('star', 'star') : ''}${v.name}</div>
-          <div class="item">${o.item.item}</div>
-          <div class="meta"><span>${svgIcon('footprints')} ${o.walk} min</span><span>${TIER_LABEL[v.tier]}</span></div>
-          ${o.item.note ? `<div class="note">${o.item.note}</div>` : ''}
+          <div class="venue">${o.isFavorite ? svgIcon('star', 'star') : ''}${esc(v.name)}</div>
+          <div class="item">${esc(o.item.item)}</div>
+          <div class="meta">
+            <span>${svgIcon('mapPin')} ${esc(BUILDINGS[v.building] ? BUILDINGS[v.building].name : v.building)}</span>
+            <span>${svgIcon('footprints')} ${o.walk} min</span>
+            <span>${TIER_LABEL[v.tier]}</span>
+          </div>
+          ${o.item.note ? `<div class="note">${esc(o.item.note)}</div>` : ''}
         </div>
         <div class="opt-price mono">$${o.item.price.toFixed(2)}${o.item.est ? '*' : ''}</div>
       </button>`;
@@ -1181,6 +1185,7 @@ function renderSettings(forced) {
     state.onboarded = true;
     activeMonth = 0; selectedDate = null;
     document.getElementById('settingsOverlay').classList.add('hidden');
+    syncOverlayLock();
     persist();
   });
 }

@@ -230,12 +230,13 @@
   .explainer p { margin: 6px 0; }
   .explainer ul { margin: 6px 0; padding-left: 18px; }
   .explainer b { color: var(--ink); }
-  .mcmaster-ref { font-size: 12px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .mcmaster-ref { font-size: 12px; color: var(--ink-muted); display: flex; align-items: flex-start; gap: 7px; margin-top: 6px; line-height: 1.5; }
+  .mcmaster-ref > span { flex: 1; min-width: 0; }
   .mcmaster-ref b { color: var(--gold); font-variant-numeric: tabular-nums; }
-  .mcmaster-ref svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .mcmaster-ref svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 3px; }
   .mcmaster-ref.muted { color: var(--ink-dim); font-style: italic; }
-  .mcmaster-ref.milestone { margin-top: 8px; padding: 8px 11px; background: color-mix(in srgb, var(--gold) 10%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent); border-radius: 8px; font-size: 12.5px; color: var(--ink); align-items: baseline; }
-  .mcmaster-ref.milestone b { color: var(--gold); }
+  .mcmaster-ref.milestone { margin-top: 10px; padding: 10px 13px; background: color-mix(in srgb, var(--gold) 10%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent); border-radius: 9px; font-size: 12.5px; color: var(--ink); }
+  .mcmaster-ref.milestone b:first-child, .mcmaster-ref.milestone > span > b:first-child { color: var(--gold); }
   .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { padding: 7px 13px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-muted); font-size: 12.5px; font-weight: 600; }
   .chip.active { background: var(--fireball); border-color: var(--fireball); color: #fff; }
