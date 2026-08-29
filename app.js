@@ -748,12 +748,10 @@ function renderConsole() {
   el.innerHTML = `
     <div class="panel">
       <div class="day-head">
-        <div>
-          <div class="day-date">${dateLabel}</div>
-          ${mcmasterRefHtml}
-        </div>
+        <div class="day-date">${dateLabel}</div>
         <button class="home-toggle ${isHome ? 'is-home' : ''}" id="homeToggleBtn">${svgIcon('house')} ${isHome ? 'Mark on-campus' : 'Mark home (skip this day)'}</button>
       </div>
+      ${mcmasterRefHtml}
       ${scheduleHtml}
     </div>
     ${bodyHtml}
