@@ -111,6 +111,7 @@
   .tl-body { padding-bottom: 12px; font-size: 13.5px; }
   .tl-body b { font-weight: 700; }
   .tl-loc { color: var(--ink-muted); font-size: 12px; }
+  .tl-noloc { color: var(--gold); font-size: 12px; font-style: italic; }
   .tl-row.tl-meal { cursor: pointer; border-radius: 8px; margin: 0 -8px; padding: 0 8px; }
   .tl-row.tl-meal:hover { background: var(--surface-2); }
   .tl-row.tl-meal .tl-dot { background: var(--gold); width: 12px; height: 12px; margin-top: 1px; }
@@ -232,6 +233,7 @@
   .sched-table td:has(select[data-sf="day"]) select { min-width: 62px; }
   .sched-table td:has(input[data-sf="start"]) input, .sched-table td:has(input[data-sf="end"]) input { min-width: 92px; }
   .sched-table td:has(select[data-sf="building"]) select { min-width: 74px; }
+  .sched-table select.needs-loc { border-color: var(--gold); color: var(--gold); }
   .row-del { background: transparent; border: none; color: var(--over); padding: 4px; }
   .upload-zone { border: 1.5px dashed var(--border); border-radius: 12px; padding: 20px; text-align: center; color: var(--ink-muted); font-size: 13px; margin-bottom: 14px; cursor: pointer; }
   .upload-zone:hover { border-color: var(--fireball); }
@@ -528,7 +530,10 @@ function classesForDay(schedule, dow) {
 }
 function dayMeta(schedule, dow) {
   const classes = classesForDay(schedule, dow);
-  const mealSlots = ['breakfast'];
+  // Everyone eats three meals -- the slots are always the same. `lunch` below is
+  // only the *class-gap* timing info, used when lunch is sandwiched between two
+  // classes; on a light day it's null and lunch is just "flexible".
+  const mealSlots = ['breakfast', 'lunch', 'dinner'];
   let lunch = null;
   for (let i = 0; i < classes.length - 1; i++) {
     const gapStart = classes[i].end, gapEnd = classes[i + 1].start;
@@ -539,8 +544,6 @@ function dayMeta(schedule, dow) {
       }
     }
   }
-  if (lunch) mealSlots.push('lunch');
-  mealSlots.push('dinner');
   return { classes, mealSlots, lunch };
 }
 function dayMetaForDate(schedule, d, termStart, termEnd) {
@@ -797,9 +800,23 @@ function renderStats() {
 }
 
 function anchorForMeal(meta, mealKey) {
-  if (mealKey === 'lunch' && meta.lunch) return { building: meta.lunch.from, label: `${fmtTime(meta.lunch.start)}–${fmtTime(meta.lunch.end)}`, window: `${meta.lunch.gapMinutes} min window`, to: meta.lunch.to };
+  if (mealKey === 'lunch') {
+    if (meta.lunch) return { building: meta.lunch.from, label: `${fmtTime(meta.lunch.start)}–${fmtTime(meta.lunch.end)}`, window: `${meta.lunch.gapMinutes} min window`, to: meta.lunch.to };
+    // No class gap today -- flexible lunch. Anchor to a class near midday if there
+    // is one (so walk times are useful), otherwise to the residence.
+    const midday = meta.classes.find(c => minutesOf(c.end) >= minutesOf('11:00') && minutesOf(c.start) <= minutesOf('14:30'));
+    return { building: midday ? midday.building : state.residence, label: 'Flexible', to: null };
+  }
   if (mealKey === 'breakfast') return { building: state.residence, label: meta.classes.length ? `Before ${fmtTime(meta.classes[0].start)}` : 'Flexible', to: meta.classes.length ? meta.classes[0].building : null };
   return { building: meta.classes.length ? meta.classes[meta.classes.length - 1].building : state.residence, label: meta.classes.length ? `After ${fmtTime(meta.classes[meta.classes.length - 1].end)}` : 'Flexible' };
+}
+
+// A trailing note for the parse status line when the parser couldn't map a
+// class to a known building. Not an error -- the user just fills those in.
+function missingLocNote(classes) {
+  const n = classes.filter(c => !BUILDINGS[c.building]).length;
+  if (!n) return '';
+  return ` Couldn't find a location for ${n} of them — please set ${n === 1 ? 'it' : 'them'} manually in the table below (marked in gold).`;
 }
 
 /* ---------- Day console ---------- */
@@ -820,23 +837,29 @@ function renderConsole() {
   const el = document.getElementById('console');
   if (!meta.mealSlots.includes(activeMealKey)) activeMealKey = meta.mealSlots[0];
 
-  const rows = [];
-  meta.mealSlots.forEach(mk => {
-    if (mk === 'lunch') {
-      const idx = meta.classes.findIndex(c => c.end === meta.lunch.start);
-      rows.push({ pos: idx, meal: mk });
-    }
-  });
   let scheduleHtml = `<div class="timeline">`;
   const brk = anchorForMeal(meta, 'breakfast');
   scheduleHtml += mealRow('breakfast', brk.label, brk.window);
+  let lunchEmitted = false;
+  const emitLunch = () => {
+    const lk = anchorForMeal(meta, 'lunch');
+    scheduleHtml += mealRow('lunch', lk.label, lk.window);
+    lunchEmitted = true;
+  };
+  // With no class-gap lunch, drop a flexible lunch just before the first
+  // class that starts at/after 11:00; if there's no such class it goes after
+  // the last class (or right after breakfast on a class-free day).
+  const flexLunchBefore = meta.lunch ? -1 : meta.classes.findIndex(c => minutesOf(c.start) >= minutesOf('11:00'));
   meta.classes.forEach((c, i) => {
-    scheduleHtml += `<div class="tl-row tl-class${selectedClassIdx === i ? ' active' : ''}" data-class-idx="${i}"><div class="tl-time mono">${fmtTime(c.start)}</div><div class="tl-rail"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-body"><b>${c.course}</b><div class="tl-loc">${svgIcon('footprints')} ${c.loc || (BUILDINGS[c.building] ? BUILDINGS[c.building].name : '')}</div></div></div>`;
-    if (meta.lunch && c.end === meta.lunch.start) {
-      const lk = anchorForMeal(meta, 'lunch');
-      scheduleHtml += mealRow('lunch', lk.label, lk.window);
-    }
+    if (!lunchEmitted && flexLunchBefore === i) emitLunch();
+    const locName = BUILDINGS[c.building] ? BUILDINGS[c.building].name : (c.loc || '');
+    const locHtml = locName
+      ? `${svgIcon('footprints')} ${locName}`
+      : `<span class="tl-noloc">Location not found — set it in Settings</span>`;
+    scheduleHtml += `<div class="tl-row tl-class${selectedClassIdx === i ? ' active' : ''}" data-class-idx="${i}"><div class="tl-time mono">${fmtTime(c.start)}</div><div class="tl-rail"><div class="tl-dot"></div><div class="tl-line"></div></div><div class="tl-body"><b>${c.course}</b><div class="tl-loc">${locHtml}</div></div></div>`;
+    if (meta.lunch && c.end === meta.lunch.start) emitLunch();
   });
+  if (!lunchEmitted) emitLunch();
   const dnr = anchorForMeal(meta, 'dinner');
   scheduleHtml += mealRow('dinner', dnr.label, dnr.window);
   scheduleHtml += `</div>`;
@@ -864,6 +887,8 @@ function renderConsole() {
       const walkBack = walkMinutes(VENUES[cur.venue].building, meta.lunch.to);
       const eatTime = Math.max(0, meta.lunch.gapMinutes - walkThere - walkBack);
       eatTimeHtml = `<div class="eat-time"><span class="n mono">${eatTime} min</span><span class="l">at the table — ${meta.lunch.gapMinutes} min gap minus ${walkThere}+${walkBack} min walking</span></div>`;
+    } else if (activeMealKey === 'lunch' && cur) {
+      eatTimeHtml = `<div class="eat-time"><span class="l">No class gap today — lunch is flexible, eat whenever works.</span></div>`;
     } else if (activeMealKey === 'breakfast' && cur) {
       const firstBuilding = meta.classes.length ? meta.classes[0].building : state.residence;
       const direct = walkMinutes(state.residence, firstBuilding) || 0;
@@ -1132,7 +1157,7 @@ function renderSettings(forced) {
       <td><input type="time" data-sf="start" data-i="${i}" value="${c.start}"></td>
       <td><input type="time" data-sf="end" data-i="${i}" value="${c.end}"></td>
       <td><input type="text" data-sf="course" data-i="${i}" value="${c.course || ''}" placeholder="Course"></td>
-      <td><select data-sf="building" data-i="${i}"><option value="">—</option>${Object.entries(BUILDINGS).map(([id, b]) => `<option value="${id}" ${c.building === id ? 'selected' : ''}>${b.short}</option>`).join('')}</select></td>
+      <td><select data-sf="building" data-i="${i}" class="${BUILDINGS[c.building] ? '' : 'needs-loc'}"><option value="">— set location</option>${Object.entries(BUILDINGS).map(([id, b]) => `<option value="${id}" ${c.building === id ? 'selected' : ''}>${b.short}</option>`).join('')}</select></td>
       <td><button class="row-del" data-del="${i}">${svgIcon('trash')}</button></td>
     </tr>`).join('');
 
@@ -1279,7 +1304,7 @@ function renderSettings(forced) {
         return;
       }
       state.schedule = found;
-      const msg = `Found ${found.length} class block${found.length === 1 ? '' : 's'} — check every row below, McMaster's PDF layout is irregular and this is a best-effort read.`;
+      const msg = `Found ${found.length} class block${found.length === 1 ? '' : 's'} — check every row below, McMaster's PDF layout is irregular and this is a best-effort read.${missingLocNote(found)}`;
       renderSettings(forced);
       document.getElementById('parseNote').textContent = msg;
     } catch (err) {
@@ -1296,7 +1321,7 @@ function renderSettings(forced) {
       return;
     }
     state.schedule = found;
-    const msg = `Found ${found.length} class block${found.length === 1 ? '' : 's'} from pasted text — check every row below before saving.`;
+    const msg = `Found ${found.length} class block${found.length === 1 ? '' : 's'} from pasted text — check every row below before saving.${missingLocNote(found)}`;
     renderSettings(forced);
     document.getElementById('parseNote').textContent = msg;
   });
