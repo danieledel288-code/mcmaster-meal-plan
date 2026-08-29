@@ -85,6 +85,8 @@
   .cal-cell.home .num { color: var(--ink-dim); text-decoration: line-through; text-decoration-color: var(--over); text-decoration-thickness: 2px; }
   .cal-cell.home svg.icon { color: var(--ink-dim); width: 11px; height: 11px; }
   .cal-cell.selected { border-color: var(--gold); border-width: 2px; }
+  .cal-cell.milestone { box-shadow: inset 0 0 0 1px var(--gold); }
+  .cal-cell.milestone .num { color: var(--gold); }
   .quick-btn { width: 100%; font-size: 12px; font-weight: 600; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--ink-muted); margin-bottom: 6px; }
   .quick-btn:hover { border-color: var(--fireball); color: var(--ink); }
   .legend { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--ink-muted); }
@@ -216,6 +218,9 @@
   .mcmaster-ref { font-size: 12px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   .mcmaster-ref b { color: var(--gold); font-variant-numeric: tabular-nums; }
   .mcmaster-ref svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .mcmaster-ref.muted { color: var(--ink-dim); font-style: italic; }
+  .mcmaster-ref.milestone { margin-top: 8px; padding: 8px 11px; background: color-mix(in srgb, var(--gold) 10%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent); border-radius: 8px; font-size: 12.5px; color: var(--ink); align-items: baseline; }
+  .mcmaster-ref.milestone b { color: var(--gold); }
   .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { padding: 7px 13px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-muted); font-size: 12.5px; font-weight: 600; }
   .chip.active { background: var(--fireball); border-color: var(--fireball); color: #fff; }
@@ -482,6 +487,7 @@ const PLAN_WEEK_ENDINGS = [
   '2027-04-04', '2027-04-11', '2027-04-18',
 ];
 const PLAN_WEEK_TS = PLAN_WEEK_ENDINGS.map(s => new Date(s + 'T00:00:00').getTime());
+const PLAN_WEEK_END_SET = new Set(PLAN_WEEK_ENDINGS);
 
 function mcmasterVisibleRemaining(p, d) {
   const bal = i => (i >= PLAN_WEEK_TS.length - 1 ? 0 : Math.max(0, p.visible - (i + 1) * p.weekly));
@@ -760,6 +766,8 @@ function renderCalendar() {
     if (special) cell.classList.add('special');
     if (isHome) cell.classList.add('home');
     if (key === isoDate(selectedDate)) cell.classList.add('selected');
+    const isMilestone = activeMealPlan() && PLAN_WEEK_END_SET.has(key);
+    if (isMilestone) cell.classList.add('milestone');
     cell.innerHTML = `<span class="num mono">${day}</span>${isHome ? svgIcon('house') : '<span class="dot"></span>'}`;
     if (inRange) cell.addEventListener('click', () => { selectedDate = d; renderCalendar(); renderConsole(); });
     calGridEl.appendChild(cell);
@@ -832,7 +840,12 @@ function renderConsole() {
   let mcmasterRefHtml = '';
   if (refPlan) {
     const vis = mcmasterVisibleRemaining(refPlan, d);
-    mcmasterRefHtml = `<div class="mcmaster-ref">${svgIcon('calendar')} McMaster's pace by this date: <b>$${vis.toFixed(2)}</b> visible / $${(vis * 2).toFixed(2)} real should be left</div>`;
+    const isMilestone = PLAN_WEEK_END_SET.has(key);
+    mcmasterRefHtml = isMilestone
+      ? `<div class="mcmaster-ref milestone">${svgIcon('calendar')} <b>Weekly checkpoint</b> &mdash; McMaster's plan says <b>$${vis.toFixed(2)}</b> visible ($${(vis * 2).toFixed(2)} real spending power) should be left by ${d.toLocaleDateString('en-CA', { month: 'long', day: 'numeric' })}.</div>`
+      : `<div class="mcmaster-ref">${svgIcon('calendar')} McMaster's pace by this date: <b>$${vis.toFixed(2)}</b> visible / $${(vis * 2).toFixed(2)} real should be left</div>`;
+  } else {
+    mcmasterRefHtml = `<div class="mcmaster-ref muted">${svgIcon('calendar')} Pick your meal plan in Settings to see McMaster's recommended balance for each week.</div>`;
   }
   const el = document.getElementById('console');
   if (!meta.mealSlots.includes(activeMealKey)) activeMealKey = meta.mealSlots[0];
