@@ -1,0 +1,3 @@
+# nothing under these paths is a public asset
+/.scripts/*  /  302
+/migrations/*  /  302
