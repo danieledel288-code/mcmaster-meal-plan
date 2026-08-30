@@ -1,2 +1,2 @@
-vendor/** -text
+public/vendor/** -text
 *.png binary
