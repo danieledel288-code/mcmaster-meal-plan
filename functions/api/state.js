@@ -97,8 +97,8 @@ async function writeState(db, uuid, incoming) {
         (state_uuid, residence, term_budget, term_start, term_end,
          winter_start, winter_end, view_term, onboarded,
          dietary, home_days, favorite_venues, hidden_venues, venue_choices,
-         meal_plan, budget_mode, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'year', ?)
+         meal_plan, budget_mode, updated_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'year', ?, datetime('now'))
       ON CONFLICT(state_uuid) DO UPDATE SET
         residence       = excluded.residence,
         term_budget     = excluded.term_budget,
