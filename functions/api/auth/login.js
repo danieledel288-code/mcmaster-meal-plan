@@ -1,4 +1,4 @@
-import { verifyPassword, signSession, sessionCookieHeader, isValidEmail } from './_utils.js';
+import { verifyPassword, signSession, sessionCookieHeader, isValidEmail, sessionSecret } from './_utils.js';
 
 const SESSION_MAX_AGE = 60 * 60 * 24 * 90;
 
@@ -21,7 +21,7 @@ export async function onRequestPost(context) {
   const ok = await verifyPassword(password, row.password_hash, row.password_salt);
   if (!ok) return new Response('Incorrect email or password.', { status: 401 });
 
-  const token = await signSession({ uid: row.id, exp: Date.now() + SESSION_MAX_AGE * 1000 }, context.env.SESSION_SECRET || 'dev-insecure-secret');
+  const token = await signSession({ uid: row.id, exp: Date.now() + SESSION_MAX_AGE * 1000 }, sessionSecret(context.env));
   return Response.json({ email, uuid: row.state_uuid }, {
     headers: { 'Set-Cookie': sessionCookieHeader(token, SESSION_MAX_AGE) },
   });

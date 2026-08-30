@@ -77,9 +77,17 @@ export function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
 }
 
+// Fail closed: no guessable fallback. Set it locally in .dev.vars and in
+// production with `wrangler pages secret put SESSION_SECRET`.
+export function sessionSecret(env) {
+  const s = env.SESSION_SECRET;
+  if (!s || s.length < 16) throw new Error('SESSION_SECRET is not configured');
+  return s;
+}
+
 export async function getSessionUser(context) {
   const token = readCookie(context.request, 'session');
-  const payload = await verifySession(token, context.env.SESSION_SECRET || 'dev-insecure-secret');
+  const payload = await verifySession(token, sessionSecret(context.env));
   if (!payload) return null;
   const row = await context.env.USERS_DB.prepare('SELECT id, email, state_uuid FROM users WHERE id = ?').bind(payload.uid).first();
   return row || null;

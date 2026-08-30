@@ -1,4 +1,4 @@
-import { hashPassword, signSession, sessionCookieHeader, newUuid, isValidEmail } from './_utils.js';
+import { hashPassword, signSession, sessionCookieHeader, newUuid, isValidEmail, sessionSecret } from './_utils.js';
 
 const UUID_RE = /^[a-zA-Z0-9-]{8,64}$/;
 const SESSION_MAX_AGE = 60 * 60 * 24 * 90;
@@ -28,7 +28,7 @@ export async function onRequestPost(context) {
     'INSERT INTO users (id, email, password_hash, password_salt, state_uuid, created_at) VALUES (?, ?, ?, ?, ?, ?)'
   ).bind(id, email, hash, salt, stateUuid, new Date().toISOString()).run();
 
-  const token = await signSession({ uid: id, exp: Date.now() + SESSION_MAX_AGE * 1000 }, context.env.SESSION_SECRET || 'dev-insecure-secret');
+  const token = await signSession({ uid: id, exp: Date.now() + SESSION_MAX_AGE * 1000 }, sessionSecret(context.env));
   return Response.json({ email, uuid: stateUuid }, {
     headers: { 'Set-Cookie': sessionCookieHeader(token, SESSION_MAX_AGE) },
   });
