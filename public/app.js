@@ -20,6 +20,7 @@ const ICON_PATHS = {
   star: "M234.29,114.85l-45,38.83L203,211.75a16.4,16.4,0,0,1-24.5,17.82L128,198.49,77.47,229.57A16.4,16.4,0,0,1,53,211.75l13.76-58.07-45-38.83A16.46,16.46,0,0,1,31.08,86l59.24-4.83,22.87-55.61a16.4,16.4,0,0,1,29.62,0l22.87,55.61L224.92,86A16.46,16.46,0,0,1,234.29,114.85Z",
   eyeSlash: "M53.92,34.62A8,8,0,1,0,42.08,45.38L61.32,66.55C25,88.84,9.38,123.2,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.9,19.65,28.11,38.86C61.6,195,93.91,208,128,208a127.11,127.11,0,0,0,52.07-11.13l22,24.51a8,8,0,1,0,11.84-10.76Zm47.55,58.79,26.94,29.94a24,24,0,0,1-26.94-29.94ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.16,133.16,0,0,1,25,128,133.16,133.16,0,0,1,48.07,97.25C50.6,94.72,53.25,92.31,56,90.05L73,109.32a40,40,0,0,0,53.75,53.75l55.55,62A111.36,111.36,0,0,1,128,192ZM240,128a133.16,133.16,0,0,1-23.07,30.75,133.86,133.86,0,0,1-14.2,12.4A8,8,0,1,1,193,158.5,116.83,116.83,0,0,0,213.93,128,133.16,133.16,0,0,0,144,64c-4.19,0-8.36.2-12.45.6a8,8,0,1,1-1.53-15.93A128.5,128.5,0,0,1,144,48c34.09,0,66.4,13,90.31,38.38a133.16,133.16,0,0,1,23.07,30.75,8,8,0,0,1,0,6.5A133.16,133.16,0,0,1,240,128Z",
   x: "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z",
+  wallet: "M216,64H56a8,8,0,0,1,0-16H192a8,8,0,0,0,0-16H56A24,24,0,0,0,32,56V184a24,24,0,0,0,24,24H216a16,16,0,0,0,16-16V80A16,16,0,0,0,216,64Zm0,128H56a8,8,0,0,1-8-8V78.63A23.84,23.84,0,0,0,56,80H216Zm-48-60a12,12,0,1,1,12,12A12,12,0,0,1,168,132Z",
 };
 function svgIcon(name, cls) {
   return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 256 256">${ICON_PATHS[name] ? `<path d="${ICON_PATHS[name]}"/>` : ''}</svg>`;
@@ -209,6 +210,80 @@ function mcmasterVisibleRemaining(p, d) {
   return 0;
 }
 
+/* ---------- Actual-balance tracking ----------
+   The user logs the real MacExpress visible balance shown on their account on a
+   given date. We compare it to McMaster's recommended balance for that date
+   (ahead / behind / on pace) and recompute a daily spending target from what's
+   actually left until the plan year ends (Apr 18, 2027). */
+const PLAN_YEAR_START_TS = new Date(PLAN_YEAR_START + 'T00:00:00').getTime();
+const PLAN_YEAR_END_TS = new Date(PLAN_YEAR_END + 'T00:00:00').getTime();
+const PLAN_YEAR_DAYS = Math.round((PLAN_YEAR_END_TS - PLAN_YEAR_START_TS) / 86400000);
+
+function balanceLog() {
+  return Array.isArray(state.balanceLog) ? state.balanceLog.filter(e => e && e.d && Number.isFinite(e.v)) : [];
+}
+function sortedBalanceLog() {
+  return balanceLog().slice().sort((a, b) => a.d.localeCompare(b.d));
+}
+function latestBalanceEntry() {
+  const log = sortedBalanceLog();
+  return log.length ? log[log.length - 1] : null;
+}
+function balanceEntryFor(iso) {
+  return balanceLog().find(e => e.d === iso) || null;
+}
+function setBalanceEntry(iso, v) {
+  const rest = balanceLog().filter(e => e.d !== iso);
+  if (v != null && Number.isFinite(v) && v >= 0) rest.push({ d: iso, v: Math.round(v * 100) / 100 });
+  state.balanceLog = rest.sort((a, b) => a.d.localeCompare(b.d));
+}
+
+// McMaster's recommended VISIBLE balance on date d for a named plan; for a custom
+// budget, a straight line from its visible-equivalent (half the year figure) to 0.
+function recommendedVisibleOn(d) {
+  const p = activeMealPlan();
+  if (p) return mcmasterVisibleRemaining(p, d);
+  const startVis = state.termBudget / 2;
+  const t = d.getTime();
+  if (t <= PLAN_YEAR_START_TS) return startVis;
+  if (t >= PLAN_YEAR_END_TS) return 0;
+  return startVis * (1 - (t - PLAN_YEAR_START_TS) / (PLAN_YEAR_END_TS - PLAN_YEAR_START_TS));
+}
+function daysUntilPlanEnd(d) {
+  return Math.max(1, Math.round((PLAN_YEAR_END_TS - d.getTime()) / 86400000));
+}
+function planDailyVisible() {
+  const p = activeMealPlan();
+  return p ? p.weekly / 7 : (state.termBudget / 2) / PLAN_YEAR_DAYS;
+}
+
+// Everything the balance panel needs for a reading of `visible` dollars on `d`.
+function paceReport(visible, d) {
+  const recommended = recommendedVisibleOn(d);
+  const delta = visible - recommended;            // + ahead of pace, - behind
+  const daysLeft = daysUntilPlanEnd(d);
+  const pdv = planDailyVisible();
+  return {
+    recommended, delta, daysLeft,
+    newDailyVisible: visible / daysLeft,
+    planDailyVisible: pdv,
+    bufferDays: pdv > 0 ? delta / pdv : 0,
+  };
+}
+
+// Observed burn rate ($/day visible) between the first and last readings.
+function observedBurn() {
+  const log = sortedBalanceLog();
+  if (log.length < 2) return null;
+  const first = log[0], last = log[log.length - 1];
+  const days = Math.max(1, Math.round((new Date(last.d + 'T00:00:00') - new Date(first.d + 'T00:00:00')) / 86400000));
+  const perDay = (first.v - last.v) / days;
+  const runOutDate = perDay > 0.005
+    ? new Date(new Date(last.d + 'T00:00:00').getTime() + (last.v / perDay) * 86400000)
+    : null;
+  return { perDay, days, runOutDate, spent: first.v - last.v };
+}
+
 /* ---------- Terms (Fall 2026 + Winter 2027) ---------- */
 const TERMS = {
   fall:   { key: 'fall',   label: 'Fall',   defStart: '2026-09-01', defEnd: '2026-12-23', classesStart: new Date(2026, 8, 8) },
@@ -338,7 +413,7 @@ let state = {
   viewTerm: 'fall',
   dietary: [], favoriteVenues: [], hiddenVenues: [],
   schedule: [], scheduleWinter: [],
-  homeDays: [], venueChoices: {}, onboarded: false,
+  homeDays: [], venueChoices: {}, balanceLog: [], onboarded: false,
   mealPlan: 'custom',
 };
 function setSyncStatus(mode) {
@@ -524,6 +599,7 @@ function renderCalendar() {
     if (key === isoDate(selectedDate)) cell.classList.add('selected');
     const isMilestone = activeMealPlan() && PLAN_WEEK_END_SET.has(key);
     if (isMilestone) cell.classList.add('milestone');
+    if (balanceLog().some(e => e.d === key)) cell.classList.add('has-reading');
     cell.innerHTML = `<span class="num mono">${day}</span>${isHome ? svgIcon('house') : '<span class="dot"></span>'}`;
     if (inRange) cell.addEventListener('click', () => { selectedDate = d; renderCalendar(); renderConsole(); });
     calGridEl.appendChild(cell);
@@ -630,6 +706,8 @@ function renderConsole() {
   } else {
     mcmasterRefHtml = `<div class="mcmaster-ref muted">${svgIcon('calendar')}<span>Pick your meal plan in Settings to see McMaster's recommended balance for each week.</span></div>`;
   }
+
+  const balancePanelHtml = buildBalancePanel(d, key);
   const el = document.getElementById('console');
   if (!meta.mealSlots.includes(activeMealKey)) activeMealKey = meta.mealSlots[0];
 
@@ -746,6 +824,7 @@ function renderConsole() {
   }
 
   el.innerHTML = `
+    ${balancePanelHtml}
     <div class="panel">
       <div class="day-head">
         <div class="day-date">${dateLabel}</div>
@@ -756,6 +835,8 @@ function renderConsole() {
     </div>
     ${bodyHtml}
   `;
+
+  wireBalancePanel(key);
 
   document.getElementById('homeToggleBtn').addEventListener('click', () => {
     if (state.homeDays.includes(key)) state.homeDays = state.homeDays.filter(x => x !== key);
@@ -798,6 +879,104 @@ function mealRow(key, label, windowText) {
     <div class="tl-rail"><div class="tl-dot"></div><div class="tl-line"></div></div>
     <div class="tl-body"><b>${svgIcon(MEAL_ICON[key])} ${MEAL_LABEL[key]}</b><div class="tl-window">${label}${windowText ? ' &middot; ' + windowText : ''}</div></div>
   </div>`;
+}
+
+/* ---------- Balance tracker panel (top of the day console) ---------- */
+function shortDate(d) { return d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }); }
+
+function buildBalancePanel(selDate, selIso) {
+  const existing = balanceEntryFor(selIso);
+  const latest = latestBalanceEntry();
+  const recForSel = recommendedVisibleOn(selDate);
+
+  let statusHtml = '';
+  if (latest) {
+    const ld = new Date(latest.d + 'T00:00:00');
+    const r = paceReport(latest.v, ld);
+    const onPace = Math.abs(r.delta) < 5;
+    const ahead = r.delta >= 0;
+    const cls = onPace ? 'pace-ok' : ahead ? 'pace-ahead' : 'pace-behind';
+    const verdict = onPace ? "On McMaster's pace"
+      : ahead ? `$${r.delta.toFixed(2)} ahead of pace`
+              : `$${Math.abs(r.delta).toFixed(2)} behind pace`;
+    const buf = Math.round(Math.abs(r.bufferDays));
+    const sub = onPace
+      ? `Right about where McMaster's plan says you should be as of ${shortDate(ld)} ($${r.recommended.toFixed(2)} recommended).`
+      : ahead
+        ? `You've spent less than the plan through ${shortDate(ld)} — about ${buf} day${buf === 1 ? '' : 's'} of cushion built up.`
+        : `You've spent faster than the plan through ${shortDate(ld)} — roughly ${buf} day${buf === 1 ? '' : 's'} ahead of budget. Ease off to catch up.`;
+
+    const burn = observedBurn();
+    let burnHtml = '';
+    if (burn && burn.runOutDate) {
+      const lands = burn.runOutDate.getTime() < PLAN_YEAR_END_TS;
+      burnHtml = `<div class="bt-burn">At your recent rate (<b>$${burn.perDay.toFixed(2)}/day</b> visible over ${burn.days} day${burn.days === 1 ? '' : 's'}), the balance runs out around <b class="${lands ? 'bad' : 'good'}">${burn.runOutDate.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}</b>. It needs to last to Apr 18, 2027.</div>`;
+    } else if (burn) {
+      burnHtml = `<div class="bt-burn">Your balance held steady or rose between check-ins — you're in good shape.</div>`;
+    }
+
+    statusHtml = `
+      <div class="bt-status ${cls}">
+        <div class="bt-verdict">${verdict}</div>
+        <div class="bt-sub">${sub}</div>
+      </div>
+      <div class="bt-rec">
+        <span class="bt-rec-n mono">$${r.newDailyVisible.toFixed(2)}</span>
+        <span class="bt-rec-l">/ day to stretch $${latest.v.toFixed(2)} to Apr 18 <span class="bt-dim">($${(r.newDailyVisible * 2).toFixed(2)}/day real spending)</span></span>
+        <div class="bt-rec-cmp">McMaster's plan pace is $${r.planDailyVisible.toFixed(2)}/day visible &middot; ${r.daysLeft} days left</div>
+      </div>
+      ${burnHtml}`;
+  }
+
+  const log = sortedBalanceLog();
+  let historyHtml = '';
+  if (log.length) {
+    historyHtml = `<details class="bt-history"><summary>All check-ins (${log.length})</summary><div class="bt-history-list">` +
+      log.slice().reverse().map(e => {
+        const ed = new Date(e.d + 'T00:00:00');
+        const dl = e.v - recommendedVisibleOn(ed);
+        const dc = Math.abs(dl) < 5 ? '' : dl >= 0 ? 'good' : 'bad';
+        return `<div class="bt-hrow"><span class="mono">${shortDate(ed)}</span><span class="mono">$${e.v.toFixed(2)}</span><span class="bt-hdelta ${dc}">${dl >= 0 ? '+' : '−'}$${Math.abs(dl).toFixed(2)} vs pace</span><button class="bt-del" data-bal-del="${esc(e.d)}" title="Remove this check-in">${svgIcon('x')}</button></div>`;
+      }).join('') + `</div></details>`;
+  }
+
+  return `
+    <div class="panel bt-panel">
+      <div class="bt-head">${svgIcon('wallet')}<span>MacExpress balance</span></div>
+      <div class="bt-entry">
+        <label for="balanceInput">Balance shown on <b>${shortDate(selDate)}</b></label>
+        <div class="bt-field">
+          <span class="bt-prefix">$</span>
+          <input type="number" inputmode="decimal" step="0.01" min="0" id="balanceInput" value="${existing ? existing.v : ''}" placeholder="${recForSel.toFixed(2)}">
+          <button class="btn small" id="balanceSaveBtn">${existing ? 'Update' : 'Save'}</button>
+          ${existing ? `<button class="btn small secondary" id="balanceClearBtn">Clear</button>` : ''}
+        </div>
+        <div class="bt-hint">Open MacExpress, type the balance it shows. Log it whenever &mdash; daily is ideal, any cadence works. Pick a past day on the calendar to backfill.</div>
+      </div>
+      ${statusHtml || `<div class="bt-empty">Log your balance once and this tells you whether you're ahead of or behind McMaster's recommended pace, and what to spend per day from here on.</div>`}
+      ${historyHtml}
+    </div>`;
+}
+
+function wireBalancePanel(selIso) {
+  const saveBtn = document.getElementById('balanceSaveBtn');
+  const input = document.getElementById('balanceInput');
+  if (saveBtn && input) {
+    const commit = () => {
+      const raw = input.value.trim();
+      if (raw === '') return;
+      const v = parseFloat(raw);
+      if (!Number.isFinite(v) || v < 0) return;
+      setBalanceEntry(selIso, v);
+      persist();
+    };
+    saveBtn.addEventListener('click', commit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+  }
+  const clearBtn = document.getElementById('balanceClearBtn');
+  if (clearBtn) clearBtn.addEventListener('click', () => { setBalanceEntry(selIso, null); persist(); });
+  document.querySelectorAll('[data-bal-del]').forEach(b =>
+    b.addEventListener('click', () => { setBalanceEntry(b.dataset.balDel, null); persist(); }));
 }
 
 document.getElementById('clearHomeBtn').addEventListener('click', () => { state.homeDays = []; persist(); });

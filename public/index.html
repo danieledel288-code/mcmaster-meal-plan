@@ -192,6 +192,51 @@
   footer.sources .disclaimer { font-size: 12px; color: var(--ink-muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
   footer.sources .disclaimer b { color: var(--ink); }
 
+  /* Balance tracker */
+  .bt-panel { display: flex; flex-direction: column; gap: 14px; }
+  .bt-head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
+  .bt-head svg.icon { width: 15px; height: 15px; color: var(--gold); }
+  .bt-entry > label { font-size: 12.5px; color: var(--ink-muted); display: block; margin-bottom: 6px; }
+  .bt-entry > label b { color: var(--ink); }
+  .bt-field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .bt-field .bt-prefix { font-family: 'Overpass Mono', monospace; font-size: 16px; color: var(--ink-muted); }
+  .bt-field input { width: 128px; font-family: 'Overpass Mono', monospace; font-size: 15px; font-weight: 700; }
+  .bt-hint { font-size: 11.5px; color: var(--ink-dim); margin-top: 8px; line-height: 1.5; }
+  .bt-empty { font-size: 12.5px; color: var(--ink-muted); line-height: 1.6; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 13px; }
+  .bt-status { border-radius: 11px; padding: 12px 14px; border: 1px solid var(--border); }
+  .bt-status.pace-ahead { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+  .bt-status.pace-behind { background: var(--over-soft); border-color: color-mix(in srgb, var(--over) 35%, transparent); }
+  .bt-status.pace-ok { background: var(--surface-2); }
+  .bt-verdict { font-family: 'Overpass Mono', monospace; font-size: 15px; font-weight: 700; }
+  .bt-status.pace-ahead .bt-verdict { color: var(--good); }
+  .bt-status.pace-behind .bt-verdict { color: var(--over); }
+  .bt-status.pace-ok .bt-verdict { color: var(--ink); }
+  .bt-sub { font-size: 12px; color: var(--ink-muted); margin-top: 4px; line-height: 1.5; }
+  .bt-rec { background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 12px 14px; }
+  .bt-rec-n { font-size: 22px; font-weight: 700; color: var(--gold); }
+  .bt-rec-l { font-size: 12.5px; color: var(--ink-muted); margin-left: 6px; }
+  .bt-dim { color: var(--ink-dim); }
+  .bt-rec-cmp { font-size: 11.5px; color: var(--ink-dim); margin-top: 6px; }
+  .bt-burn { font-size: 12px; color: var(--ink-muted); line-height: 1.55; }
+  .bt-burn b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .bt-burn b.bad { color: var(--over); }
+  .bt-burn b.good { color: var(--good); }
+  .bt-history { border-top: 1px solid var(--border); padding-top: 2px; }
+  .bt-history > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--gold); padding: 6px 0; list-style: none; }
+  .bt-history > summary::-webkit-details-marker { display: none; }
+  .bt-history > summary::before { content: "＋ "; }
+  .bt-history[open] > summary::before { content: "－ "; }
+  .bt-history-list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+  .bt-hrow { display: grid; grid-template-columns: 52px 78px 1fr auto; gap: 8px; align-items: center; font-size: 12px; padding: 5px 0; border-top: 1px solid var(--surface-2); }
+  .bt-hdelta { font-size: 11px; color: var(--ink-dim); }
+  .bt-hdelta.good { color: var(--good); }
+  .bt-hdelta.bad { color: var(--over); }
+  .bt-del { background: transparent; border: none; color: var(--ink-dim); padding: 2px; line-height: 0; }
+  .bt-del:hover { color: var(--over); }
+  .bt-del svg.icon { width: 12px; height: 12px; }
+  .cal-cell { position: relative; }
+  .cal-cell.has-reading::after { content: ""; position: absolute; top: 3px; right: 3px; width: 4px; height: 4px; border-radius: 50%; background: var(--gold); }
+
   /* Settings overlay */
   .settings-overlay { position: fixed; inset: 0; background: rgba(10,5,7,0.72); backdrop-filter: blur(2px); display: flex; justify-content: flex-end; z-index: 1000; }
   body.overlay-open { overflow: hidden; }
