@@ -906,6 +906,15 @@ function buildBalancePanel(selDate, selIso) {
         ? `You've spent less than the plan through ${shortDate(ld)} — about ${buf} day${buf === 1 ? '' : 's'} of cushion built up.`
         : `You've spent faster than the plan through ${shortDate(ld)} — roughly ${buf} day${buf === 1 ? '' : 's'} ahead of budget. Ease off to catch up.`;
 
+    // Your sustainable daily allowance from here = balance / days left, vs the
+    // plan's flat daily average. Ahead -> a bit above it; behind -> below.
+    const dd = r.newDailyVisible - r.planDailyVisible;
+    const flat = Math.abs(dd) < 0.05;
+    const arrow = flat ? '' : dd > 0 ? '▲ ' : '▼ ';
+    const ddText = flat
+      ? `Same as the plan's $${r.planDailyVisible.toFixed(2)}/day average.`
+      : `$${Math.abs(dd).toFixed(2)}/day ${dd > 0 ? 'more' : 'less'} than the plan's $${r.planDailyVisible.toFixed(2)}/day average — ${dd > 0 ? 'your cushion buys the extra room' : 'stay under this to catch back up'}.`;
+
     const burn = observedBurn();
     let burnHtml = '';
     if (burn && burn.runOutDate) {
@@ -921,9 +930,11 @@ function buildBalancePanel(selDate, selIso) {
         <div class="bt-sub">${sub}</div>
       </div>
       <div class="bt-rec">
-        <span class="bt-rec-n mono">$${r.newDailyVisible.toFixed(2)}</span>
-        <span class="bt-rec-l">/ day to stretch $${latest.v.toFixed(2)} to Apr 18 <span class="bt-dim">($${(r.newDailyVisible * 2).toFixed(2)}/day real spending)</span></span>
-        <div class="bt-rec-cmp">McMaster's plan pace is $${r.planDailyVisible.toFixed(2)}/day visible &middot; ${r.daysLeft} days left</div>
+        <div class="bt-rec-top">
+          <span class="bt-rec-n mono">$${r.newDailyVisible.toFixed(2)}</span>
+          <span class="bt-rec-l">a day you can spend from here on <span class="bt-dim">&middot; $${(r.newDailyVisible * 2).toFixed(2)}/day of real food</span></span>
+        </div>
+        <div class="bt-rec-cmp ${flat ? '' : dd > 0 ? 'bt-up' : 'bt-down'}">${arrow}${ddText} ${r.daysLeft} days left to Apr 18.</div>
       </div>
       ${burnHtml}`;
   }
