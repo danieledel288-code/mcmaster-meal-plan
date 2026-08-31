@@ -26,6 +26,7 @@ const DEFAULT_STATE = {
   scheduleWinter: [],   // Winter classes
   homeDays: [],
   venueChoices: {},
+  balanceLog: [],       // [{ d: 'YYYY-MM-DD', v: <MacExpress visible balance> }]
   onboarded: false,
   mealPlan: 'custom',
   updatedAt: null,
@@ -69,6 +70,7 @@ function rowToState(row, scheduleRows) {
     hiddenVenues: JSON.parse(row.hidden_venues),
     homeDays: JSON.parse(row.home_days),
     venueChoices: JSON.parse(row.venue_choices),
+    balanceLog: JSON.parse(row.balance_log || '[]'),
     onboarded: !!row.onboarded,
     mealPlan: row.meal_plan,
     updatedAt: row.updated_at,
@@ -97,8 +99,8 @@ async function writeState(db, uuid, incoming) {
         (state_uuid, residence, term_budget, term_start, term_end,
          winter_start, winter_end, view_term, onboarded,
          dietary, home_days, favorite_venues, hidden_venues, venue_choices,
-         meal_plan, budget_mode, updated_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'year', ?, datetime('now'))
+         balance_log, meal_plan, budget_mode, updated_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'year', ?, datetime('now'))
       ON CONFLICT(state_uuid) DO UPDATE SET
         residence       = excluded.residence,
         term_budget     = excluded.term_budget,
@@ -113,6 +115,7 @@ async function writeState(db, uuid, incoming) {
         favorite_venues = excluded.favorite_venues,
         hidden_venues   = excluded.hidden_venues,
         venue_choices   = excluded.venue_choices,
+        balance_log     = excluded.balance_log,
         meal_plan       = excluded.meal_plan,
         updated_at      = excluded.updated_at
     `).bind(
@@ -121,7 +124,7 @@ async function writeState(db, uuid, incoming) {
       s.onboarded ? 1 : 0,
       JSON.stringify(s.dietary), JSON.stringify(s.homeDays),
       JSON.stringify(s.favoriteVenues), JSON.stringify(s.hiddenVenues),
-      JSON.stringify(s.venueChoices),
+      JSON.stringify(s.venueChoices), JSON.stringify(s.balanceLog || []),
       s.mealPlan || 'custom', s.updatedAt,
     ),
     db.prepare('DELETE FROM schedule_entries WHERE state_uuid = ?').bind(uuid),
