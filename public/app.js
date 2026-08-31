@@ -620,10 +620,23 @@ function renderStats() {
   const semVis = semesterVisible();
   const perDay = semEff / onCampus;
   const tLabel = activeTerm().label;
+
+  // Once the user is logging their real MacExpress balance, the daily number
+  // should match the balance panel (real balance / days to the plan end), not
+  // the rough even split of the term.
+  const latestBal = latestBalanceEntry();
+  let dailyN = perDay, dailyL = 'your target / day', dailySub = semVis != null ? `$${(perDay / 2).toFixed(2)} off visible` : '';
+  if (latestBal) {
+    const pr = paceReport(latestBal.v, new Date(latestBal.d + 'T00:00:00'));
+    dailyN = pr.newDailyVisible * 2;
+    dailyL = 'to spend / day now';
+    dailySub = `from your $${latestBal.v.toFixed(2)} balance`;
+  }
+
   document.getElementById('cmdStats').innerHTML = `
     <div class="cmd-stat"><div class="n mono">$${semEff.toFixed(2)}</div><div class="l">to spend &middot; ${tLabel}${semVis != null ? `<span class="sub">$${semVis.toFixed(2)} off visible balance</span>` : ''}</div></div>
     <div class="cmd-stat"><div class="n mono">${onCampus}</div><div class="l">on-campus days</div></div>
-    <div class="cmd-stat"><div class="n mono">$${perDay.toFixed(2)}</div><div class="l">your target / day${semVis != null ? `<span class="sub">$${(perDay / 2).toFixed(2)} off visible</span>` : ''}</div></div>
+    <div class="cmd-stat"><div class="n mono">$${dailyN.toFixed(2)}</div><div class="l">${dailyL}<span class="sub">${dailySub}</span></div></div>
     <div class="cmd-stat"><div class="n mono">${homeInTerm}</div><div class="l">days marked home</div></div>
   `;
   document.getElementById('placeSub').textContent = `${BUILDINGS[state.residence] ? BUILDINGS[state.residence].name : 'McMaster'}`;
@@ -893,33 +906,39 @@ function buildBalancePanel(selDate, selIso) {
   if (latest) {
     const ld = new Date(latest.d + 'T00:00:00');
     const r = paceReport(latest.v, ld);
-    const onPace = Math.abs(r.delta) < 5;
-    const ahead = r.delta >= 0;
+    // Everything the user sees here is in real spending-power dollars (2x the
+    // MacExpress "visible" number they typed in), because that's what a meal
+    // actually costs them.
+    const deltaReal = r.delta * 2;
+    const onPace = Math.abs(deltaReal) < 10;
+    const ahead = deltaReal >= 0;
     const cls = onPace ? 'pace-ok' : ahead ? 'pace-ahead' : 'pace-behind';
-    const verdict = onPace ? "On McMaster's pace"
-      : ahead ? `$${r.delta.toFixed(2)} ahead of pace`
-              : `$${Math.abs(r.delta).toFixed(2)} behind pace`;
+    const verdict = onPace ? "On track with McMaster's plan"
+      : ahead ? `$${deltaReal.toFixed(2)} ahead of the plan`
+              : `$${Math.abs(deltaReal).toFixed(2)} behind the plan`;
     const buf = Math.round(Math.abs(r.bufferDays));
     const sub = onPace
-      ? `Right about where McMaster's plan says you should be as of ${shortDate(ld)} ($${r.recommended.toFixed(2)} recommended).`
+      ? `Right about where McMaster's plan says you should be as of ${shortDate(ld)}.`
       : ahead
         ? `You've spent less than the plan through ${shortDate(ld)} — about ${buf} day${buf === 1 ? '' : 's'} of cushion built up.`
-        : `You've spent faster than the plan through ${shortDate(ld)} — roughly ${buf} day${buf === 1 ? '' : 's'} ahead of budget. Ease off to catch up.`;
+        : `You've spent faster than the plan through ${shortDate(ld)} — about ${buf} day${buf === 1 ? '' : 's'} of spending to make back. Ease off to catch up.`;
 
-    // Your sustainable daily allowance from here = balance / days left, vs the
-    // plan's flat daily average. Ahead -> a bit above it; behind -> below.
-    const dd = r.newDailyVisible - r.planDailyVisible;
-    const flat = Math.abs(dd) < 0.05;
+    // Your sustainable daily budget from here = balance / days left. Compare it
+    // to the plan's flat daily average: ahead -> a bit above it; behind -> below.
+    const dayReal = r.newDailyVisible * 2;
+    const planReal = r.planDailyVisible * 2;
+    const dd = dayReal - planReal;
+    const flat = Math.abs(dd) < 0.10;
     const arrow = flat ? '' : dd > 0 ? '▲ ' : '▼ ';
     const ddText = flat
-      ? `Same as the plan's $${r.planDailyVisible.toFixed(2)}/day average.`
-      : `$${Math.abs(dd).toFixed(2)}/day ${dd > 0 ? 'more' : 'less'} than the plan's $${r.planDailyVisible.toFixed(2)}/day average — ${dd > 0 ? 'your cushion buys the extra room' : 'stay under this to catch back up'}.`;
+      ? `Right at the plan's $${planReal.toFixed(2)}/day average.`
+      : `$${Math.abs(dd).toFixed(2)}/day ${dd > 0 ? 'more' : 'less'} than the plan's $${planReal.toFixed(2)}/day average — ${dd > 0 ? 'being ahead earns you the extra room' : 'stay under this and you catch back up'}.`;
 
     const burn = observedBurn();
     let burnHtml = '';
     if (burn && burn.runOutDate) {
       const lands = burn.runOutDate.getTime() < PLAN_YEAR_END_TS;
-      burnHtml = `<div class="bt-burn">At your recent rate (<b>$${burn.perDay.toFixed(2)}/day</b> visible over ${burn.days} day${burn.days === 1 ? '' : 's'}), the balance runs out around <b class="${lands ? 'bad' : 'good'}">${burn.runOutDate.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}</b>. It needs to last to Apr 18, 2027.</div>`;
+      burnHtml = `<div class="bt-burn">At your recent rate (<b>$${(burn.perDay * 2).toFixed(2)}/day</b> of food over ${burn.days} day${burn.days === 1 ? '' : 's'}), the balance runs out around <b class="${lands ? 'bad' : 'good'}">${burn.runOutDate.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}</b>. It needs to last to Apr 18, 2027.</div>`;
     } else if (burn) {
       burnHtml = `<div class="bt-burn">Your balance held steady or rose between check-ins — you're in good shape.</div>`;
     }
@@ -931,10 +950,11 @@ function buildBalancePanel(selDate, selIso) {
       </div>
       <div class="bt-rec">
         <div class="bt-rec-top">
-          <span class="bt-rec-n mono">$${r.newDailyVisible.toFixed(2)}</span>
-          <span class="bt-rec-l">a day you can spend from here on <span class="bt-dim">&middot; $${(r.newDailyVisible * 2).toFixed(2)}/day of real food</span></span>
+          <span class="bt-rec-n mono">$${dayReal.toFixed(2)}</span>
+          <span class="bt-rec-l">a day you can spend on food from here on</span>
         </div>
         <div class="bt-rec-cmp ${flat ? '' : dd > 0 ? 'bt-up' : 'bt-down'}">${arrow}${ddText} ${r.daysLeft} days left to Apr 18.</div>
+        <div class="bt-rec-foot">Follow this number, not the rough term average up top — this one uses your real balance.</div>
       </div>
       ${burnHtml}`;
   }
@@ -945,9 +965,9 @@ function buildBalancePanel(selDate, selIso) {
     historyHtml = `<details class="bt-history"><summary>All check-ins (${log.length})</summary><div class="bt-history-list">` +
       log.slice().reverse().map(e => {
         const ed = new Date(e.d + 'T00:00:00');
-        const dl = e.v - recommendedVisibleOn(ed);
-        const dc = Math.abs(dl) < 5 ? '' : dl >= 0 ? 'good' : 'bad';
-        return `<div class="bt-hrow"><span class="mono">${shortDate(ed)}</span><span class="mono">$${e.v.toFixed(2)}</span><span class="bt-hdelta ${dc}">${dl >= 0 ? '+' : '−'}$${Math.abs(dl).toFixed(2)} vs pace</span><button class="bt-del" data-bal-del="${esc(e.d)}" title="Remove this check-in">${svgIcon('x')}</button></div>`;
+        const dl = (e.v - recommendedVisibleOn(ed)) * 2;
+        const dc = Math.abs(dl) < 10 ? '' : dl >= 0 ? 'good' : 'bad';
+        return `<div class="bt-hrow"><span class="mono">${shortDate(ed)}</span><span class="mono">$${e.v.toFixed(2)}</span><span class="bt-hdelta ${dc}">${dl >= 0 ? '+' : '−'}$${Math.abs(dl).toFixed(2)} vs plan</span><button class="bt-del" data-bal-del="${esc(e.d)}" title="Remove this check-in">${svgIcon('x')}</button></div>`;
       }).join('') + `</div></details>`;
   }
 
@@ -962,7 +982,7 @@ function buildBalancePanel(selDate, selIso) {
           <button class="btn small" id="balanceSaveBtn">${existing ? 'Update' : 'Save'}</button>
           ${existing ? `<button class="btn small secondary" id="balanceClearBtn">Clear</button>` : ''}
         </div>
-        <div class="bt-hint">Open MacExpress, type the balance it shows. Log it whenever &mdash; daily is ideal, any cadence works. Pick a past day on the calendar to backfill.</div>
+        <div class="bt-hint">Open MacExpress, type the balance it shows &mdash; the app doubles it to your real spending power. Log it whenever; daily is ideal. Pick a past day on the calendar to backfill.</div>
       </div>
       ${statusHtml || `<div class="bt-empty">Log your balance once and this tells you whether you're ahead of or behind McMaster's recommended pace, and what to spend per day from here on.</div>`}
       ${historyHtml}
